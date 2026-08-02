@@ -1,0 +1,974 @@
+import React, { useState } from 'react';
+import { Student, ClassScheduleSlot, EnglishLevel, DayOfWeek, PaymentStatus } from '../types';
+import { StudentAvatar } from './StudentAvatar';
+import { 
+  CEFR_LEVELS, 
+  DAYS_ORDER, 
+  getCurrentMonthPaymentStatus, 
+  formatCurrency, 
+  getInitials, 
+  formatMonthYearLabel 
+} from '../utils/helpers';
+import { 
+  X, 
+  Calendar, 
+  Clock, 
+  DollarSign, 
+  BookOpen, 
+  FileText, 
+  Plus, 
+  Trash2, 
+  Pin, 
+  CheckCircle2, 
+  AlertCircle, 
+  Award, 
+  Edit3, 
+  Save, 
+  Video, 
+  Mail, 
+  Phone, 
+  Target,
+  PlusCircle,
+  History,
+  MessageCircle,
+  Printer
+} from 'lucide-react';
+
+interface StudentDetailModalProps {
+  student: Student | null;
+  onClose: () => void;
+  onUpdateStudent: (updatedStudent: Student) => void;
+  onDeleteStudent: (studentId: string) => void;
+  onQuickLogClass: (student: Student) => void;
+  onOpenWhatsApp?: (student: Student, template?: 'payment' | 'schedule' | 'homework') => void;
+  onOpenReport?: (student: Student) => void;
+}
+
+export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
+  student,
+  onClose,
+  onUpdateStudent,
+  onDeleteStudent,
+  onQuickLogClass,
+  onOpenWhatsApp,
+  onOpenReport,
+}) => {
+  if (!student) return null;
+
+  const [activeTab, setActiveTab] = useState<'schedule' | 'payments' | 'classes' | 'level' | 'notes'>('schedule');
+
+  // Local state for editing basic student profile
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [name, setName] = useState(student.name);
+  const [email, setEmail] = useState(student.email);
+  const [phone, setPhone] = useState(student.phone || '');
+  const [targetGoal, setTargetGoal] = useState(student.targetGoal || '');
+  const [englishLevel, setEnglishLevel] = useState<EnglishLevel>(student.englishLevel);
+  const [monthlyFee, setMonthlyFee] = useState<number>(student.monthlyFee);
+  const [currencySymbol, setCurrencySymbol] = useState<string>(student.currencySymbol || '$');
+  const [dueDayOfMonth, setDueDayOfMonth] = useState<number>(student.dueDayOfMonth || 5);
+  const [currentClassNumber, setCurrentClassNumber] = useState<number>(student.currentClassNumber);
+
+  // Local state for schedules
+  const [schedules, setSchedules] = useState<ClassScheduleSlot[]>(student.schedules || []);
+  const [newDay, setNewDay] = useState<DayOfWeek>('Monday');
+  const [newStartTime, setNewStartTime] = useState('14:00');
+  const [newEndTime, setNewEndTime] = useState('15:00');
+  const [newLocation, setNewLocation] = useState('Google Meet');
+
+  // Local state for creating a new note
+  const [newNoteTitle, setNewNoteTitle] = useState('');
+  const [newNoteContent, setNewNoteContent] = useState('');
+  const [newNoteCategory, setNewNoteCategory] = useState<'lesson' | 'homework' | 'grammar' | 'general' | 'reminder'>('lesson');
+
+  const levelInfo = CEFR_LEVELS[student.englishLevel] || CEFR_LEVELS.B1;
+  const paymentInfo = getCurrentMonthPaymentStatus(student);
+
+  // Save profile changes
+  const handleSaveProfile = () => {
+    onUpdateStudent({
+      ...student,
+      name,
+      email,
+      phone,
+      targetGoal,
+      englishLevel,
+      monthlyFee,
+      currencySymbol,
+      dueDayOfMonth,
+      currentClassNumber,
+      schedules,
+    });
+    setIsEditingProfile(false);
+  };
+
+  // Add Schedule slot
+  const handleAddScheduleSlot = () => {
+    const slot: ClassScheduleSlot = {
+      id: `sch-${Date.now()}`,
+      day: newDay,
+      startTime: newStartTime,
+      endTime: newEndTime,
+      locationUrl: newLocation,
+    };
+    const updated = [...schedules, slot];
+    setSchedules(updated);
+    onUpdateStudent({ ...student, schedules: updated });
+  };
+
+  // Remove Schedule slot
+  const handleRemoveScheduleSlot = (slotId: string) => {
+    const updated = schedules.filter((s) => s.id !== slotId);
+    setSchedules(updated);
+    onUpdateStudent({ ...student, schedules: updated });
+  };
+
+  // Add Note
+  const handleAddNote = () => {
+    if (!newNoteTitle.trim()) return;
+    const note = {
+      id: `note-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      category: newNoteCategory,
+      title: newNoteTitle,
+      content: newNoteContent,
+      pinned: false,
+    };
+    const updatedNotes = [note, ...student.notes];
+    onUpdateStudent({ ...student, notes: updatedNotes });
+    setNewNoteTitle('');
+    setNewNoteContent('');
+  };
+
+  // Toggle Pin Note
+  const handleTogglePin = (noteId: string) => {
+    const updatedNotes = student.notes.map((n) => (n.id === noteId ? { ...n, pinned: !n.pinned } : n));
+    onUpdateStudent({ ...student, notes: updatedNotes });
+  };
+
+  // Delete Note
+  const handleDeleteNote = (noteId: string) => {
+    const updatedNotes = student.notes.filter((n) => n.id !== noteId);
+    onUpdateStudent({ ...student, notes: updatedNotes });
+  };
+
+  // Toggle Payment Status
+  const handleTogglePaymentStatus = (status: PaymentStatus) => {
+    const currentKey = paymentInfo.record?.monthYear || new Date().toISOString().slice(0, 7);
+    const existingIdx = student.paymentHistory.findIndex((p) => p.monthYear === currentKey);
+    const updatedHistory = [...student.paymentHistory];
+
+    const newRec = {
+      id: existingIdx >= 0 ? student.paymentHistory[existingIdx].id : `pay-${Date.now()}`,
+      monthYear: currentKey,
+      amount: student.monthlyFee,
+      status,
+      paidDate: status === 'paid' ? new Date().toISOString() : undefined,
+      method: 'Bank Transfer' as const,
+      notes: status === 'paid' ? 'Marked as paid' : 'Pending payment',
+    };
+
+    if (existingIdx >= 0) {
+      updatedHistory[existingIdx] = newRec;
+    } else {
+      updatedHistory.unshift(newRec);
+    }
+
+    onUpdateStudent({ ...student, paymentHistory: updatedHistory });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-4xl w-full my-auto border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        
+        {/* Header Profile Summary */}
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 sm:p-6 relative">
+          <button
+            onClick={onClose}
+            className="absolute right-4 top-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            
+            <div className="flex items-center space-x-4">
+              <StudentAvatar name={student.name} avatarUrl={student.avatarUrl} className="w-16 h-16 rounded-2xl text-2xl" />
+
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-bold tracking-tight">{student.name}</h2>
+                  <span className={`px-2.5 py-0.5 rounded-lg text-xs font-extrabold ${levelInfo.badgeBg}`}>
+                    {levelInfo.code}
+                  </span>
+                </div>
+                <p className="text-xs text-indigo-200 mt-0.5 flex items-center gap-2">
+                  <Target className="w-3.5 h-3.5" />
+                  {student.targetGoal || 'General English Proficiency'}
+                </p>
+                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300 mt-2">
+                  <span className="flex items-center gap-1">
+                    <Mail className="w-3.5 h-3.5 text-slate-400" />
+                    {student.email}
+                  </span>
+                  {student.phone && (
+                    <span className="flex items-center gap-1">
+                      <Phone className="w-3.5 h-3.5 text-slate-400" />
+                      {student.phone}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Stat Pill & Action Buttons in Modal Header */}
+            <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-auto justify-end">
+              {onOpenWhatsApp && (
+                <button
+                  type="button"
+                  onClick={() => onOpenWhatsApp(student)}
+                  className="px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                >
+                  <MessageCircle className="w-4 h-4 fill-current" />
+                  <span>WhatsApp</span>
+                </button>
+              )}
+
+              {onOpenReport && (
+                <button
+                  type="button"
+                  onClick={() => onOpenReport(student)}
+                  className="px-3 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 backdrop-blur-md"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Relatório PDF</span>
+                </button>
+              )}
+
+              <div className="bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/10 flex items-center gap-4">
+                <div>
+                  <div className="text-[10px] text-indigo-200 uppercase font-semibold">Class Counter</div>
+                  <div className="text-lg font-black text-white">Class #{student.currentClassNumber}</div>
+                </div>
+                <div className="h-8 w-px bg-white/10" />
+                <div>
+                  <div className="text-[10px] text-indigo-200 uppercase font-semibold">Monthly Rate</div>
+                  <div className="text-lg font-black text-white">
+                    {formatCurrency(student.monthlyFee, student.currencySymbol)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        {/* Modal Navigation Tabs */}
+        <div className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 flex items-center gap-2 overflow-x-auto text-xs font-bold">
+          
+          <button
+            onClick={() => setActiveTab('schedule')}
+            className={`py-3 px-3.5 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap ${
+              activeTab === 'schedule'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900'
+            }`}
+          >
+            <Clock className="w-4 h-4" />
+            <span>Days & Hours ({schedules.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('payments')}
+            className={`py-3 px-3.5 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap ${
+              activeTab === 'payments'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900'
+            }`}
+          >
+            <DollarSign className="w-4 h-4" />
+            <span>Monthly Payments</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('classes')}
+            className={`py-3 px-3.5 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap ${
+              activeTab === 'classes'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900'
+            }`}
+          >
+            <BookOpen className="w-4 h-4" />
+            <span>Class Logs (#{student.currentClassNumber})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('level')}
+            className={`py-3 px-3.5 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap ${
+              activeTab === 'level'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900'
+            }`}
+          >
+            <Award className="w-4 h-4" />
+            <span>CEFR Level & Goals</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('notes')}
+            className={`py-3 px-3.5 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap ${
+              activeTab === 'notes'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900'
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            <span>Student Notes ({student.notes.length})</span>
+          </button>
+
+        </div>
+
+        {/* Modal Tab Content Area */}
+        <div className="p-6 overflow-y-auto flex-1 space-y-6">
+          
+          {/* TAB 1: SCHEDULE CONTROL (Days & Hours) */}
+          {activeTab === 'schedule' && (
+            <div className="space-y-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-base text-slate-900 dark:text-white">
+                    Weekly Days & Hours Control
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Set recurring days of the week and exact lesson hours for {student.name}.
+                  </p>
+                </div>
+              </div>
+
+              {/* List of current scheduled times */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {schedules.map((slot) => (
+                  <div
+                    key={slot.id}
+                    className="bg-slate-50 dark:bg-slate-800/80 p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700 flex items-center justify-between"
+                  >
+                    <div>
+                      <div className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+                        {slot.day}s
+                      </div>
+                      <div className="text-sm font-black text-indigo-600 dark:text-indigo-400 mt-0.5">
+                        {slot.startTime} – {slot.endTime}
+                      </div>
+                      {slot.locationUrl && (
+                        <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-1">
+                          <Video className="w-3 h-3 text-blue-500" />
+                          {slot.locationUrl}
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => handleRemoveScheduleSlot(slot.id)}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                      title="Remove Schedule Slot"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Add New Schedule Form */}
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200/80 dark:border-slate-700/80 space-y-3">
+                <h4 className="font-bold text-xs text-slate-800 dark:text-slate-200">
+                  + Add New Class Schedule Slot
+                </h4>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                  <div>
+                    <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Day</label>
+                    <select
+                      value={newDay}
+                      onChange={(e) => setNewDay(e.target.value as DayOfWeek)}
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-medium"
+                    >
+                      {DAYS_ORDER.map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Start Hour</label>
+                    <input
+                      type="time"
+                      value={newStartTime}
+                      onChange={(e) => setNewStartTime(e.target.value)}
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">End Hour</label>
+                    <input
+                      type="time"
+                      value={newEndTime}
+                      onChange={(e) => setNewEndTime(e.target.value)}
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Location / Platform</label>
+                    <input
+                      type="text"
+                      value={newLocation}
+                      onChange={(e) => setNewLocation(e.target.value)}
+                      placeholder="e.g. Google Meet"
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleAddScheduleSlot}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Save Schedule Slot</span>
+                </button>
+              </div>
+
+            </div>
+          )}
+
+          {/* TAB 2: MONTHLY PAYMENTS */}
+          {activeTab === 'payments' && (
+            <div className="space-y-5">
+              
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-base text-slate-900 dark:text-white">
+                    Monthly Tuition & Payment Control
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Control how much and when {student.name} pays each month.
+                  </p>
+                </div>
+              </div>
+
+              {/* Current Month Status Card */}
+              <div className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
+                paymentInfo.status === 'paid'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800'
+                  : paymentInfo.status === 'overdue'
+                  ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800'
+                  : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800'
+              }`}>
+                <div>
+                  <div className="text-xs font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                    Current Billing Cycle (This Month)
+                  </div>
+                  <div className="text-xl font-black text-slate-900 dark:text-white mt-1">
+                    {formatCurrency(student.monthlyFee, student.currencySymbol)} / month
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                    Due Day: Every {student.dueDayOfMonth || 5}th of the month ({paymentInfo.dueDateStr})
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase ${
+                    paymentInfo.status === 'paid'
+                      ? 'bg-emerald-600 text-white'
+                      : paymentInfo.status === 'overdue'
+                      ? 'bg-rose-600 text-white'
+                      : 'bg-amber-500 text-white'
+                  }`}>
+                    {paymentInfo.status}
+                  </span>
+
+                  {paymentInfo.status !== 'paid' ? (
+                    <button
+                      onClick={() => handleTogglePaymentStatus('paid')}
+                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Mark Paid</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleTogglePaymentStatus('pending')}
+                      className="px-3 py-1.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold hover:bg-slate-300"
+                    >
+                      Mark Pending
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Payment Settings Form (Monthly Fee & Due Day) */}
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200/80 dark:border-slate-700 space-y-3">
+                <h4 className="font-bold text-xs text-slate-800 dark:text-slate-200">
+                  Update Tuition Fee & Payment Due Date
+                </h4>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Monthly Fee Amount
+                    </label>
+                    <input
+                      type="number"
+                      value={monthlyFee}
+                      onChange={(e) => setMonthlyFee(parseFloat(e.target.value) || 0)}
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Currency Symbol
+                    </label>
+                    <input
+                      type="text"
+                      value={currencySymbol}
+                      onChange={(e) => setCurrencySymbol(e.target.value)}
+                      placeholder="$"
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Due Day of Month (1-31)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={31}
+                      value={dueDayOfMonth}
+                      onChange={(e) => setDueDayOfMonth(parseInt(e.target.value, 10) || 5)}
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2 font-bold"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleSaveProfile}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Update Fee Settings</span>
+                </button>
+              </div>
+
+              {/* Payment History Log */}
+              <div>
+                <h4 className="font-bold text-xs text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-1">
+                  <History className="w-4 h-4 text-slate-400" /> Payment History Log
+                </h4>
+                
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden text-xs">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 font-semibold border-b dark:border-slate-800">
+                      <tr>
+                        <th className="py-2.5 px-3">Month</th>
+                        <th className="py-2.5 px-3">Amount</th>
+                        <th className="py-2.5 px-3">Status</th>
+                        <th className="py-2.5 px-3">Paid Date</th>
+                        <th className="py-2.5 px-3">Method / Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {student.paymentHistory.map((pay) => (
+                        <tr key={pay.id}>
+                          <td className="py-2.5 px-3 font-bold">{formatMonthYearLabel(pay.monthYear)}</td>
+                          <td className="py-2.5 px-3 font-semibold">{formatCurrency(pay.amount, student.currencySymbol)}</td>
+                          <td className="py-2.5 px-3">
+                            <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                              pay.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                            }`}>
+                              {pay.status.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-500">
+                            {pay.paidDate ? new Date(pay.paidDate).toLocaleDateString() : '—'}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-500">{pay.notes || pay.method || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+            </div>
+          )}
+
+          {/* TAB 3: CLASS SESSION COUNTER & LOGS */}
+          {activeTab === 'classes' && (
+            <div className="space-y-5">
+              
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-indigo-50/70 dark:bg-indigo-950/40 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900">
+                <div>
+                  <div className="text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                    Class Counter & Progress Tracker
+                  </div>
+                  <div className="text-2xl font-black text-slate-900 dark:text-white mt-0.5">
+                    Currently on Class #{student.currentClassNumber}
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Logged {student.classLogs.length} total past sessions
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => onQuickLogClass(student)}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-xs"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Log Class #{student.currentClassNumber + 1}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Adjust Class Counter Manually if Transferring Existing Student */}
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between text-xs">
+                <div>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">Adjust Class Counter:</span>
+                  <span className="text-slate-500 ml-1">Change starting class number if needed.</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={currentClassNumber}
+                    onChange={(e) => setCurrentClassNumber(parseInt(e.target.value, 10) || 0)}
+                    className="w-20 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-1.5 text-center font-bold"
+                  />
+                  <button
+                    onClick={handleSaveProfile}
+                    className="px-3 py-1.5 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold rounded-lg text-xs hover:opacity-90 transition"
+                  >
+                    Update #
+                  </button>
+                </div>
+              </div>
+
+              {/* Historical Class Session Logs */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-xs text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                  <BookOpen className="w-4 h-4 text-indigo-500" /> Previous Class Sessions
+                </h4>
+
+                {student.classLogs.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 text-xs bg-slate-50 dark:bg-slate-800/20 rounded-xl border border-slate-200 dark:border-slate-800">
+                    No class history logged yet. Click "Log Class" to record your first lesson topic and homework!
+                  </div>
+                ) : (
+                  student.classLogs.map((log) => (
+                    <div
+                      key={log.id}
+                      className="bg-white dark:bg-slate-800/60 p-4 rounded-xl border border-slate-200/80 dark:border-slate-700 space-y-2 text-xs"
+                    >
+                      <div className="flex items-center justify-between font-bold">
+                        <span className="text-indigo-600 dark:text-indigo-400 font-black text-sm">
+                          Class #{log.classNumber}
+                        </span>
+                        <span className="text-slate-400 font-medium">
+                          {new Date(log.date).toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })}
+                        </span>
+                      </div>
+
+                      {log.topic && (
+                        <div>
+                          <strong className="text-slate-700 dark:text-slate-300">Topic Covered:</strong> {log.topic}
+                        </div>
+                      )}
+
+                      {log.grammarFocus && (
+                        <div className="text-slate-600 dark:text-slate-400">
+                          <strong className="text-slate-700 dark:text-slate-300">Grammar Focus:</strong> {log.grammarFocus}
+                        </div>
+                      )}
+
+                      {log.homeworkAssigned && (
+                        <div className="bg-amber-50 dark:bg-amber-950/40 p-2 rounded-lg text-amber-900 dark:text-amber-200 font-medium border border-amber-200/60 dark:border-amber-900/60">
+                          <strong>Homework:</strong> {log.homeworkAssigned}
+                        </div>
+                      )}
+
+                      {log.notes && <div className="italic text-slate-500">"{log.notes}"</div>}
+                    </div>
+                  ))
+                )}
+              </div>
+
+            </div>
+          )}
+
+          {/* TAB 4: ENGLISH LEVEL & GOALS */}
+          {activeTab === 'level' && (
+            <div className="space-y-5">
+              
+              <div>
+                <h3 className="font-bold text-base text-slate-900 dark:text-white">
+                  English Proficiency & Learning Goals
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Select student's CEFR scale level (A1 to C2) and track target goals.
+                </p>
+              </div>
+
+              {/* CEFR Level Selector Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {(Object.keys(CEFR_LEVELS) as EnglishLevel[]).map((lvlKey) => {
+                  const lvl = CEFR_LEVELS[lvlKey];
+                  const isSelected = englishLevel === lvlKey;
+
+                  return (
+                    <button
+                      key={lvlKey}
+                      onClick={() => {
+                        setEnglishLevel(lvlKey);
+                        onUpdateStudent({ ...student, englishLevel: lvlKey });
+                      }}
+                      className={`p-3.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                        isSelected
+                          ? 'border-indigo-600 ring-2 ring-indigo-500/20 bg-indigo-50/50 dark:bg-indigo-950/40'
+                          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={`px-2.5 py-0.5 rounded-md font-bold text-xs ${lvl.badgeBg}`}>
+                          {lvl.code}
+                        </span>
+                        {isSelected && <CheckCircle2 className="w-4 h-4 text-indigo-600" />}
+                      </div>
+                      <div className="mt-2 font-bold text-slate-900 dark:text-white text-xs">
+                        {lvl.name}
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
+                        {lvl.description}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Student Target Goal & Personal Info Edit */}
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200/80 dark:border-slate-700/80 space-y-3 text-xs">
+                <h4 className="font-bold text-slate-800 dark:text-slate-200">
+                  Update Student Contact & Goals
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Full Name</label>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Phone / WhatsApp</label>
+                    <input
+                      type="text"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Target English Goal</label>
+                    <input
+                      type="text"
+                      value={targetGoal}
+                      onChange={(e) => setTargetGoal(e.target.value)}
+                      placeholder="e.g. IELTS 7.5, Job Interview, Fluency"
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleSaveProfile}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Save Profile Info</span>
+                </button>
+              </div>
+
+            </div>
+          )}
+
+          {/* TAB 5: STUDENT NOTES & HOMEWORK */}
+          {activeTab === 'notes' && (
+            <div className="space-y-5">
+              
+              <div>
+                <h3 className="font-bold text-base text-slate-900 dark:text-white">
+                  Teacher Notes & Homework Records
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Add timestamped notes for grammar points to review, homework assigned, or general feedback.
+                </p>
+              </div>
+
+              {/* Add New Note Box */}
+              <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
+                <h4 className="font-bold text-xs text-slate-800 dark:text-slate-200 flex items-center gap-1">
+                  <PlusCircle className="w-4 h-4 text-indigo-600" /> Create New Note
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div className="sm:col-span-2">
+                    <input
+                      type="text"
+                      value={newNoteTitle}
+                      onChange={(e) => setNewNoteTitle(e.target.value)}
+                      placeholder="Note Title (e.g. Preposition error review, Exam date)"
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <select
+                      value={newNoteCategory}
+                      onChange={(e) => setNewNoteCategory(e.target.value as any)}
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2 font-semibold"
+                    >
+                      <option value="lesson">Lesson Note</option>
+                      <option value="grammar">Grammar Focus</option>
+                      <option value="homework">Homework</option>
+                      <option value="reminder">Reminder</option>
+                      <option value="general">General</option>
+                    </select>
+                  </div>
+                </div>
+
+                <textarea
+                  rows={2}
+                  value={newNoteContent}
+                  onChange={(e) => setNewNoteContent(e.target.value)}
+                  placeholder="Write detailed note content or homework details..."
+                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs"
+                />
+
+                <button
+                  onClick={handleAddNote}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Note</span>
+                </button>
+              </div>
+
+              {/* Notes List */}
+              <div className="space-y-3">
+                {student.notes.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic text-center py-6">
+                    No notes recorded for this student yet.
+                  </p>
+                ) : (
+                  student.notes.map((note) => (
+                    <div
+                      key={note.id}
+                      className={`p-4 rounded-xl border transition text-xs space-y-1.5 ${
+                        note.pinned
+                          ? 'bg-amber-50/70 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800'
+                          : 'bg-white dark:bg-slate-800/60 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between font-bold">
+                        <div className="flex items-center space-x-2">
+                          <span className="px-2 py-0.5 rounded-md text-[10px] uppercase font-black bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
+                            {note.category}
+                          </span>
+                          <span className="text-slate-900 dark:text-white text-sm">{note.title}</span>
+                        </div>
+
+                        <div className="flex items-center space-x-1">
+                          <button
+                            onClick={() => handleTogglePin(note.id)}
+                            className={`p-1 rounded-lg transition ${
+                              note.pinned ? 'text-amber-600 font-bold' : 'text-slate-400 hover:text-slate-600'
+                            }`}
+                            title={note.pinned ? 'Unpin Note' : 'Pin Note to Top'}
+                          >
+                            <Pin className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteNote(note.id)}
+                            className="p-1 text-slate-400 hover:text-rose-600 rounded-lg transition"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <p className="text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{note.content}</p>
+
+                      <div className="text-[10px] text-slate-400 pt-1">
+                        Recorded on {new Date(note.createdAt).toLocaleDateString()} at{' '}
+                        {new Date(note.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+            </div>
+          )}
+
+        </div>
+
+        {/* Modal Footer Controls */}
+        <div className="bg-slate-50 dark:bg-slate-800/80 p-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <button
+            onClick={() => {
+              if (confirm(`Are you sure you want to delete ${student.name}?`)) {
+                onDeleteStudent(student.id);
+                onClose();
+              }
+            }}
+            className="text-xs font-semibold text-rose-600 hover:text-rose-800 hover:underline flex items-center gap-1"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Delete Student</span>
+          </button>
+
+          <button
+            onClick={onClose}
+            className="px-5 py-2 text-xs font-bold text-white bg-slate-900 dark:bg-slate-100 dark:text-slate-900 rounded-xl hover:opacity-90 transition"
+          >
+            Close Window
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+};

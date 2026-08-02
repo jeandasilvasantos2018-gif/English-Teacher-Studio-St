@@ -1,0 +1,8 @@
+{
+  "name": "Remix English Teacher Student Manager",
+  "description": "Control class schedules, track monthly student payments, log completed class session numbers, record CEFR English levels, and store detailed student notes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
