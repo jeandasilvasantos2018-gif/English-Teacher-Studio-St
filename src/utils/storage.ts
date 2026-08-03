@@ -2,7 +2,7 @@ import { Student, ClassSessionLog, MonthlyPaymentRecord, StudentNote, PaymentSta
 import { INITIAL_STUDENTS } from '../data/initialData';
 import { getCurrentMonthYearKey } from './helpers';
 
-const STORAGE_KEY = 'english_teacher_students_v5';
+const STORAGE_KEY = 'english_teacher_students_v6';
 
 export function loadStudents(): Student[] {
   try {

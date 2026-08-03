@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Student, ViewMode, ClassSessionLog, PaymentStatus } from './types';
+import { Student, ViewMode, ClassSessionLog, PaymentStatus, DayOfWeek } from './types';
 import { 
   loadStudents, 
   saveStudents, 
@@ -11,6 +11,7 @@ import { Header } from './components/Header';
 import { StatsCards } from './components/StatsCards';
 import { StudentList } from './components/StudentList';
 import { WeeklyScheduleView } from './components/WeeklyScheduleView';
+import { AvailabilityView } from './components/AvailabilityView';
 import { PaymentTrackerView } from './components/PaymentTrackerView';
 import { StudentDetailModal } from './components/StudentDetailModal';
 import { AddStudentModal } from './components/AddStudentModal';
@@ -30,8 +31,9 @@ export default function App() {
   // Quick Log Class Modal
   const [quickLogStudent, setQuickLogStudent] = useState<Student | null>(null);
 
-  // Add Student Modal
+  // Add Student Modal & Prefilled Slot
   const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
+  const [initialAddStudentSlot, setInitialAddStudentSlot] = useState<{ day: DayOfWeek; startTime: string; endTime: string } | null>(null);
 
   // AI Lesson Planner Modal
   const [isAiPlannerOpen, setIsAiPlannerOpen] = useState(false);
@@ -125,12 +127,10 @@ export default function App() {
   };
 
   const handleResetData = () => {
-    if (confirm('Reset to initial sample students?')) {
-      const reset = resetToDemoData();
-      setStudents(reset);
-      setSelectedStudent(null);
-      showToast('Reset to demo students');
-    }
+    const reset = resetToDemoData();
+    setStudents(reset);
+    setSelectedStudent(null);
+    showToast('Reset to demo students');
   };
 
   const handleExportData = () => {
@@ -164,6 +164,11 @@ export default function App() {
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleOpenAddStudentWithSlot = (day: DayOfWeek, startTime: string, endTime: string) => {
+    setInitialAddStudentSlot({ day, startTime, endTime });
+    setIsAddStudentOpen(true);
   };
 
   return (
@@ -216,7 +221,10 @@ export default function App() {
             onQuickRecordPayment={(std) => {
               setSelectedStudent(std);
             }}
-            onOpenAddStudent={() => setIsAddStudentOpen(true)}
+            onOpenAddStudent={() => {
+              setInitialAddStudentSlot(null);
+              setIsAddStudentOpen(true);
+            }}
             onOpenWhatsApp={(std, tmpl) => {
               setWhatsAppStudent(std);
               if (tmpl) setWhatsAppTemplate(tmpl);
@@ -228,7 +236,21 @@ export default function App() {
             students={students}
             onSelectStudent={(std) => setSelectedStudent(std)}
             onQuickLogClass={(std) => setQuickLogStudent(std)}
-            onOpenAddStudent={() => setIsAddStudentOpen(true)}
+            onOpenAddStudent={() => {
+              setInitialAddStudentSlot(null);
+              setIsAddStudentOpen(true);
+            }}
+            onOpenAvailability={() => setViewMode('availability')}
+          />
+        ) : viewMode === 'availability' ? (
+          <AvailabilityView
+            students={students}
+            onSelectStudent={(std) => setSelectedStudent(std)}
+            onOpenAddStudentWithSlot={handleOpenAddStudentWithSlot}
+            onOpenWhatsApp={(std) => {
+              setWhatsAppStudent(std);
+              setWhatsAppTemplate('schedule');
+            }}
           />
         ) : (
           <PaymentTrackerView
@@ -260,8 +282,12 @@ export default function App() {
 
       <AddStudentModal
         isOpen={isAddStudentOpen}
-        onClose={() => setIsAddStudentOpen(false)}
+        onClose={() => {
+          setIsAddStudentOpen(false);
+          setInitialAddStudentSlot(null);
+        }}
         onAddStudent={handleAddStudent}
+        initialSlot={initialAddStudentSlot}
       />
 
       <QuickLogClassModal

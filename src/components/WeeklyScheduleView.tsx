@@ -1,13 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { Student, DayOfWeek } from '../types';
 import { DAYS_ORDER, CEFR_LEVELS } from '../utils/helpers';
-import { Calendar, Clock, Video, Plus, CheckCircle2, Filter, Search, X } from 'lucide-react';
+import { Calendar, Clock, Video, Plus, CheckCircle2, Filter, Search, X, CalendarCheck } from 'lucide-react';
 
 interface WeeklyScheduleViewProps {
   students: Student[];
   onSelectStudent: (student: Student) => void;
   onQuickLogClass: (student: Student) => void;
   onOpenAddStudent: () => void;
+  onOpenAvailability?: () => void;
 }
 
 export const WeeklyScheduleView: React.FC<WeeklyScheduleViewProps> = ({
@@ -15,6 +16,7 @@ export const WeeklyScheduleView: React.FC<WeeklyScheduleViewProps> = ({
   onSelectStudent,
   onQuickLogClass,
   onOpenAddStudent,
+  onOpenAvailability,
 }) => {
   const [selectedStudentId, setSelectedStudentId] = useState<string>('all');
   const [selectedDay, setSelectedDay] = useState<string>('all');
@@ -102,13 +104,25 @@ export const WeeklyScheduleView: React.FC<WeeklyScheduleViewProps> = ({
           </div>
         </div>
 
-        <button
-          onClick={onOpenAddStudent}
-          className="px-3.5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition flex items-center gap-1.5 shadow-xs"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add New Class Slot</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {onOpenAvailability && (
+            <button
+              onClick={onOpenAvailability}
+              className="px-3.5 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/80 hover:bg-emerald-100 dark:hover:bg-emerald-900 border border-emerald-200 dark:border-emerald-800 rounded-xl transition flex items-center gap-1.5 shadow-xs"
+            >
+              <CalendarCheck className="w-4 h-4 text-emerald-600" />
+              <span>Verificar Horários Livres</span>
+            </button>
+          )}
+
+          <button
+            onClick={onOpenAddStudent}
+            className="px-3.5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition flex items-center gap-1.5 shadow-xs"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add New Class Slot</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}

@@ -265,8 +265,8 @@ export const INITIAL_STUDENTS: Student[] = [
     active: true,
     createdAt: '2026-02-01T10:00:00.000Z',
     schedules: [
-      { id: 'sch-den-1', day: 'Wednesday', startTime: '13:30', endTime: '14:30', locationUrl: 'Google Meet' },
-      { id: 'sch-den-2', day: 'Thursday', startTime: '15:30', endTime: '16:30', locationUrl: 'Google Meet' },
+      { id: 'sch-den-1', day: 'Wednesday', startTime: '14:00', endTime: '15:00', locationUrl: 'Google Meet' },
+      { id: 'sch-den-2', day: 'Thursday', startTime: '15:00', endTime: '16:00', locationUrl: 'Google Meet' },
     ],
     paymentHistory: [
       {
@@ -305,7 +305,7 @@ export const INITIAL_STUDENTS: Student[] = [
         createdAt: '2026-07-01T10:00:00.000Z',
         category: 'grammar',
         title: 'Nível & Observação Importante',
-        content: 'Básico (Muitos problemas com pronúncia; tem uma mania de ler as coisas rápido demais e acaba errando muito por isso). Horários: Quarta-feira 13h30 | Quinta-feira 15h30.',
+        content: 'Básico (Muitos problemas com pronúncia; tem uma mania de ler as coisas rápido demais e acaba errando muito por isso). Horários: Quarta-feira 14h00 | Quinta-feira 15h00.',
         pinned: true,
       },
     ],

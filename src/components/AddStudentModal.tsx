@@ -7,9 +7,10 @@ interface AddStudentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddStudent: (newStudent: Student) => void;
+  initialSlot?: { day: DayOfWeek; startTime: string; endTime: string } | null;
 }
 
-export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClose, onAddStudent }) => {
+export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClose, onAddStudent, initialSlot }) => {
   if (!isOpen) return null;
 
   const [name, setName] = useState('');
@@ -23,10 +24,19 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({ isOpen, onClos
   const [initialClassNumber, setInitialClassNumber] = useState<number>(1);
   const [initialNote, setInitialNote] = useState('');
 
-  // Schedules state
-  const [schedules, setSchedules] = useState<ClassScheduleSlot[]>([
-    { id: 'sch-init-1', day: 'Monday', startTime: '15:00', endTime: '16:00', locationUrl: 'Google Meet' },
-  ]);
+  // Schedules state initialized with initialSlot if present
+  const [schedules, setSchedules] = useState<ClassScheduleSlot[]>(() => {
+    if (initialSlot) {
+      return [{
+        id: `sch-init-${Date.now()}`,
+        day: initialSlot.day,
+        startTime: initialSlot.startTime,
+        endTime: initialSlot.endTime,
+        locationUrl: 'Google Meet',
+      }];
+    }
+    return [{ id: 'sch-init-1', day: 'Monday', startTime: '15:00', endTime: '16:00', locationUrl: 'Google Meet' }];
+  });
 
   const [slotDay, setSlotDay] = useState<DayOfWeek>('Wednesday');
   const [slotStartTime, setSlotStartTime] = useState('15:00');

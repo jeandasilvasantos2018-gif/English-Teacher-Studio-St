@@ -4,6 +4,7 @@ import {
   GraduationCap, 
   Users, 
   CalendarDays, 
+  CalendarCheck,
   DollarSign, 
   Plus, 
   CheckCircle2, 
@@ -101,6 +102,18 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <CalendarDays className="w-4 h-4 shrink-0" />
               <span>Grade Semanal</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('availability')}
+              className={`flex items-center gap-2 px-3.5 h-8 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                viewMode === 'availability'
+                  ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <CalendarCheck className="w-4 h-4 shrink-0 text-emerald-500" />
+              <span>Horários Livres</span>
             </button>
 
             <button
