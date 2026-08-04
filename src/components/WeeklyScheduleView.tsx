@@ -206,7 +206,7 @@ export const WeeklyScheduleView: React.FC<WeeklyScheduleViewProps> = ({
               <option value="all">Todos os Níveis</option>
               {Object.entries(CEFR_LEVELS).map(([code, info]) => (
                 <option key={code} value={code}>
-                  {code} - {info.label}
+                  {code} - {info.name}
                 </option>
               ))}
             </select>

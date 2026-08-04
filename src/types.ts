@@ -87,4 +87,4 @@ export type FilterLevel = 'ALL' | EnglishLevel;
 export type FilterPayment = 'ALL' | 'paid' | 'pending' | 'overdue';
 export type FilterDay = 'ALL' | DayOfWeek;
 
-export type ViewMode = 'grid' | 'table' | 'weekly' | 'payments' | 'availability';
+export type ViewMode = 'grid' | 'table' | 'weekly' | 'payments' | 'availability' | 'backup';

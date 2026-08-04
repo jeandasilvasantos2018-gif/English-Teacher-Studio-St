@@ -20,14 +20,14 @@ const ANIMAL_AVATARS: Record<string, { bg: string; icon: string; label: string }
 };
 
 const DEFAULT_ANIMALS = [
-  { bg: 'from-orange-500 to-amber-500', icon: '🦊' },
-  { bg: 'from-amber-600 to-orange-700', icon: '🐻' },
-  { bg: 'from-yellow-500 to-amber-600', icon: '🦁' },
-  { bg: 'from-emerald-500 to-teal-700', icon: '🐼' },
-  { bg: 'from-slate-600 to-slate-800', icon: '🐨' },
-  { bg: 'from-rose-500 to-orange-600', icon: '🐯' },
-  { bg: 'from-indigo-500 to-purple-600', icon: '🐰' },
-  { bg: 'from-blue-500 to-cyan-600', icon: '🦉' },
+  { bg: 'from-orange-500 to-amber-500', icon: '🦊', label: 'Raposa' },
+  { bg: 'from-amber-600 to-orange-700', icon: '🐻', label: 'Urso' },
+  { bg: 'from-yellow-500 to-amber-600', icon: '🦁', label: 'Leão' },
+  { bg: 'from-emerald-500 to-teal-700', icon: '🐼', label: 'Panda' },
+  { bg: 'from-slate-600 to-slate-800', icon: '🐨', label: 'Koala' },
+  { bg: 'from-rose-500 to-orange-600', icon: '🐯', label: 'Tigre' },
+  { bg: 'from-indigo-500 to-purple-600', icon: '🐰', label: 'Coelho' },
+  { bg: 'from-blue-500 to-cyan-600', icon: '🦉', label: 'Coruja' },
 ];
 
 function getAnimalForName(name: string) {

@@ -19,6 +19,8 @@ import { QuickLogClassModal } from './components/QuickLogClassModal';
 import { LessonPlannerAIModal } from './components/LessonPlannerAIModal';
 import { WhatsAppModal } from './components/WhatsAppModal';
 import { StudentReportModal } from './components/StudentReportModal';
+import { BackupRestoreView } from './components/BackupRestoreView';
+import { exportBackupJSON, importBackupJSON } from './utils/backup';
 import { Check, Info } from 'lucide-react';
 
 export default function App() {
@@ -134,14 +136,13 @@ export default function App() {
   };
 
   const handleExportData = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(students, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `english_teacher_students_backup_${new Date().toISOString().slice(0, 10)}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-    showToast('Exported JSON backup');
+    try {
+      exportBackupJSON();
+      showToast('Backup exportado com sucesso.');
+    } catch (err: unknown) {
+      if (err instanceof Error) showToast(err.message);
+      else showToast('Unable to export backup.');
+    }
   };
 
   const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -151,17 +152,17 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const parsed = JSON.parse(event.target?.result as string);
-        if (Array.isArray(parsed)) {
-          setStudents(parsed);
-          saveStudents(parsed);
-          showToast('Imported student dataset successfully');
-        } else {
-          alert('Invalid backup JSON format');
-        }
-      } catch (err) {
-        alert('Failed to parse JSON file');
+        const text = event.target?.result as string;
+        const updated = importBackupJSON(text);
+        setStudents(updated);
+        showToast('Backup imported successfully.');
+      } catch (err: unknown) {
+        if (err instanceof Error) showToast(err.message);
+        else showToast('Unable to import backup.');
       }
+    };
+    reader.onerror = () => {
+      showToast('Unable to import backup.');
     };
     reader.readAsText(file);
   };
@@ -251,6 +252,15 @@ export default function App() {
               setWhatsAppStudent(std);
               setWhatsAppTemplate('schedule');
             }}
+          />
+        ) : viewMode === 'backup' ? (
+          <BackupRestoreView
+            students={students}
+            onStudentsUpdated={(updated) => {
+              setStudents(updated);
+              saveStudents(updated);
+            }}
+            onShowToast={showToast}
           />
         ) : (
           <PaymentTrackerView

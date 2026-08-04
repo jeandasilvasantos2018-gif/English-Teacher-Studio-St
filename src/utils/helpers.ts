@@ -157,7 +157,7 @@ export function getNextClassInfo(student: Student): {
   if (!bestSlot) return null;
 
   const { slot, daysUntil } = bestSlot;
-  let dayLabel = slot.day;
+  let dayLabel = slot.day as string;
   if (daysUntil === 0) dayLabel = 'Today';
   else if (daysUntil === 1) dayLabel = 'Tomorrow';
 
