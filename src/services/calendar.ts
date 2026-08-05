@@ -160,7 +160,7 @@ export async function resolveStudentRemoteId(
       .maybeSingle();
 
     if (error) {
-      console.error('[Calendar Service] Error resolving student remote ID:', error);
+      console.error('[resolveStudentRemoteId erro do Supabase]', error);
       return null;
     }
 
@@ -170,7 +170,7 @@ export async function resolveStudentRemoteId(
 
     return null;
   } catch (err) {
-    console.error('[Calendar Service] Exception resolving student remote ID:', err);
+    console.error('[resolveStudentRemoteId excecao]', err);
     return null;
   }
 }
@@ -505,7 +505,6 @@ export async function syncPendingCalendarEvents(): Promise<CalendarServiceResult
       payload.local_id = event.id;
       payload.user_id = user.id;
 
-      console.log('[calendar sync payload]', JSON.stringify(payload, null, 2));
       assertNoIdInPayload(payload);
 
       const { data, error } = await supabase
@@ -750,7 +749,7 @@ export async function createCalendarEvent(
       return createResult(
         false,
         newEvent,
-        `Saved locally, but student '${newEvent.studentId}' was not found in Supabase.`
+        'Selected student could not be resolved in Supabase.'
       );
     }
 
@@ -758,7 +757,6 @@ export async function createCalendarEvent(
     payload.local_id = generatedId;
     payload.user_id = user.id;
 
-    console.log('[calendar sync payload]', JSON.stringify(payload, null, 2));
     assertNoIdInPayload(payload);
 
     const { data, error } = await supabase
@@ -872,7 +870,7 @@ export async function updateCalendarEvent(
       return createResult(
         false,
         updatedEvent,
-        `Updated locally, but student '${targetStudentId}' was not found in Supabase.`
+        'Selected student could not be resolved in Supabase.'
       );
     }
 
@@ -882,7 +880,6 @@ export async function updateCalendarEvent(
       payload.local_id = id;
       payload.user_id = user.id;
 
-      console.log('[calendar sync payload]', JSON.stringify(payload, null, 2));
       assertNoIdInPayload(payload);
 
       query = supabase
@@ -897,7 +894,6 @@ export async function updateCalendarEvent(
       fullPayload.local_id = id;
       fullPayload.user_id = user.id;
 
-      console.log('[calendar sync payload]', JSON.stringify(fullPayload, null, 2));
       assertNoIdInPayload(fullPayload);
 
       query = supabase
