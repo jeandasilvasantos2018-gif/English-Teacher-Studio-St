@@ -20,6 +20,7 @@ import { LessonPlannerAIModal } from './components/LessonPlannerAIModal';
 import { WhatsAppModal } from './components/WhatsAppModal';
 import { StudentReportModal } from './components/StudentReportModal';
 import { BackupRestoreView } from './components/BackupRestoreView';
+import { SupabaseTest } from './components/SupabaseTest';
 import { exportBackupJSON, importBackupJSON } from './utils/backup';
 import { Check, Info } from 'lucide-react';
 
@@ -262,6 +263,8 @@ export default function App() {
             }}
             onShowToast={showToast}
           />
+        ) : viewMode === 'supabase_test' ? (
+          <SupabaseTest onBack={() => setViewMode('grid')} />
         ) : (
           <PaymentTrackerView
             students={students}

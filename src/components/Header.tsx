@@ -12,7 +12,8 @@ import {
   Sparkles,
   Download,
   Upload,
-  HardDrive
+  HardDrive,
+  Database
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -139,6 +140,18 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <HardDrive className="w-4 h-4 shrink-0 text-indigo-500" />
               <span>Backup & Restore</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('supabase_test')}
+              className={`flex items-center gap-2 px-3.5 h-8 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                viewMode === 'supabase_test'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Database className="w-4 h-4 shrink-0 text-cyan-500" />
+              <span>Supabase Test</span>
             </button>
           </div>
 
