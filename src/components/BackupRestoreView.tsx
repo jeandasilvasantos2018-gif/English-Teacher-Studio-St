@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Student } from '../types';
 import { BackupStats } from '../types/backup';
+import { useAuth } from '../hooks/useAuth';
+import { migrateLocalStorageToSupabase, getStudentsFromSupabase } from '../services/sync';
+import { saveStudents } from '../utils/storage';
 import {
   calculateBackupStats,
   exportBackupJSON,
@@ -25,6 +28,13 @@ import {
   X,
   FileJson,
   ShieldAlert,
+  Cloud,
+  CloudUpload,
+  CloudDownload,
+  UserCheck,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 
 interface BackupRestoreViewProps {
@@ -38,6 +48,7 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({
   onStudentsUpdated,
   onShowToast,
 }) => {
+  const { user } = useAuth();
   const [stats, setStats] = useState<BackupStats>(() => calculateBackupStats(students));
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -45,12 +56,79 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Cloud Sync state
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+  const [isRestoringCloud, setIsRestoringCloud] = useState(false);
+  const [cloudSyncMessage, setCloudSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Re-calculate stats when students prop changes
   useEffect(() => {
     setStats(calculateBackupStats(students));
   }, [students]);
+
+  // Handle Cloud Sync (Local -> Supabase)
+  const handleSyncWithSupabase = async () => {
+    setIsSyncingCloud(true);
+    setCloudSyncMessage(null);
+    try {
+      const res = await migrateLocalStorageToSupabase();
+      if (res.success) {
+        const msg = `Dados sincronizados com sucesso (${res.count ?? 0} alunos enviados).`;
+        setCloudSyncMessage({
+          type: 'success',
+          text: msg,
+        });
+        onShowToast(msg);
+      } else {
+        const msg = res.message || res.error || 'Erro ao sincronizar com Supabase.';
+        setCloudSyncMessage({
+          type: 'error',
+          text: msg,
+        });
+        onShowToast(msg);
+      }
+    } catch (err: unknown) {
+      const errorText = err instanceof Error ? err.message : 'Erro inesperado durante a sincronização.';
+      setCloudSyncMessage({ type: 'error', text: errorText });
+      onShowToast(errorText);
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
+  // Handle Restore from Supabase (Supabase -> Local)
+  const handleRestoreFromSupabase = async () => {
+    setIsRestoringCloud(true);
+    setCloudSyncMessage(null);
+    try {
+      const { data, error } = await getStudentsFromSupabase();
+      if (error) {
+        setCloudSyncMessage({
+          type: 'error',
+          text: `Erro ao restaurar do Supabase: ${error}`,
+        });
+        onShowToast(`Erro ao restaurar: ${error}`);
+      } else if (data) {
+        saveStudents(data);
+        onStudentsUpdated(data);
+        setStats(calculateBackupStats(data));
+        const msg = `Restauração concluída! ${data.length} aluno(s) obtidos do Supabase e salvos localmente (chave: english_teacher_students_v6).`;
+        setCloudSyncMessage({
+          type: 'success',
+          text: msg,
+        });
+        onShowToast(`Restauração do Supabase concluída (${data.length} alunos).`);
+      }
+    } catch (err: unknown) {
+      const errorText = err instanceof Error ? err.message : 'Erro inesperado na restauração.';
+      setCloudSyncMessage({ type: 'error', text: errorText });
+      onShowToast(errorText);
+    } finally {
+      setIsRestoringCloud(false);
+    }
+  };
 
   // Handle Export Backup
   const handleExport = () => {
@@ -165,6 +243,100 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({
           <span>
             Chave Local: <strong className="font-mono text-indigo-600 dark:text-indigo-400">english_teacher_students_v6</strong>
           </span>
+        </div>
+      </div>
+
+      {/* Cloud Sync Section */}
+      <div className="bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-900 border border-indigo-700/50 rounded-2xl p-6 shadow-lg text-white space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 flex items-center justify-center shrink-0">
+              <Cloud className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-bold tracking-tight">Cloud Sync</h3>
+                <span className="text-[10px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-md bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
+                  Supabase
+                </span>
+              </div>
+              <p className="text-xs text-indigo-200/80 mt-0.5">
+                Sincronize ou restaure seus alunos e diários de aula diretamente na nuvem.
+              </p>
+            </div>
+          </div>
+
+          {/* User Status */}
+          <div className="flex items-center gap-2.5 bg-indigo-950/80 border border-indigo-800/80 px-3.5 py-2 rounded-xl text-xs shrink-0">
+            <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+            <div className="flex flex-col">
+              <span className="text-[10px] text-indigo-300 font-medium">Usuário Autenticado</span>
+              <span className="font-semibold text-white truncate max-w-[200px]">
+                {user?.email || 'Nenhum usuário conectado'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Sync Feedback Message */}
+        {cloudSyncMessage && (
+          <div
+            className={`p-3.5 rounded-xl border text-xs flex items-start gap-2.5 ${
+              cloudSyncMessage.type === 'success'
+                ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-200'
+                : 'bg-rose-950/60 border-rose-500/40 text-rose-200'
+            }`}
+          >
+            {cloudSyncMessage.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            )}
+            <span className="font-medium leading-relaxed">{cloudSyncMessage.text}</span>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+          {/* Sync Button (Local -> Supabase) */}
+          <button
+            type="button"
+            onClick={handleSyncWithSupabase}
+            disabled={isSyncingCloud || isRestoringCloud}
+            className="py-3 px-4 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition shadow-md shadow-indigo-950 flex items-center justify-center gap-2 border border-indigo-400/30 cursor-pointer"
+          >
+            {isSyncingCloud ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-indigo-200" />
+                <span>Sincronizando dados...</span>
+              </>
+            ) : (
+              <>
+                <CloudUpload className="w-4 h-4 text-indigo-200" />
+                <span>Sync with Supabase</span>
+              </>
+            )}
+          </button>
+
+          {/* Restore Button (Supabase -> Local) */}
+          <button
+            type="button"
+            onClick={handleRestoreFromSupabase}
+            disabled={isSyncingCloud || isRestoringCloud}
+            className="py-3 px-4 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition shadow-md flex items-center justify-center gap-2 border border-slate-700 cursor-pointer"
+          >
+            {isRestoringCloud ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+                <span>Buscando do Supabase...</span>
+              </>
+            ) : (
+              <>
+                <CloudDownload className="w-4 h-4 text-cyan-400" />
+                <span>Restore from Supabase</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
 
