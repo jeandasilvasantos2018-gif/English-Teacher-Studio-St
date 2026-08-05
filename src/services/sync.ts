@@ -1,6 +1,6 @@
 /**
  * Camada de sincronização entre LocalStorage (English Teacher Studio) e Supabase.
- * Suporta Mapeamento de local_id, UUIDs reais e isolamento de usuário via Supabase Auth.
+ * Suporta mapeamento de local_id, UUIDs reais, sincronização estrita de sub-tabelas e isolamento por usuário.
  */
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Student, ClassScheduleSlot, ClassSessionLog, MonthlyPaymentRecord, StudentNote } from '../types';
@@ -91,121 +91,205 @@ export async function syncStudentsToSupabase(students: Student[]): Promise<SyncR
       };
     }
 
-    // Criar um mapa de local_id -> id (UUID real do Supabase)
+    // 2. Obter os UUIDs reais do Supabase
     const localToUuidMap = new Map<string, string>();
-    (insertedStudents || []).forEach((row) => {
-      if (row.local_id && row.id) {
-        localToUuidMap.set(row.local_id, row.id);
+    if (insertedStudents) {
+      insertedStudents.forEach((row) => {
+        if (row.local_id && row.id) {
+          localToUuidMap.set(String(row.local_id), row.id);
+        }
+      });
+    }
+
+    // Garantir que todos os alunos tenham seu UUID recuperado buscando no Supabase se algum faltar
+    const missingLocalIds = students.filter((s) => !localToUuidMap.has(String(s.id)));
+    if (missingLocalIds.length > 0) {
+      const { data: dbStudents, error: fetchError } = await supabase
+        .from('students')
+        .select('id, local_id')
+        .eq('user_id', user.id);
+
+      if (fetchError) {
+        console.error('=== ERRO AO RECUPERAR UUIDS DOS ALUNOS ===', fetchError);
+        return {
+          success: false,
+          message: `Erro ao recuperar UUIDs dos alunos: ${fetchError.message}`,
+          error: fetchError.message,
+        };
       }
-    });
+
+      (dbStudents || []).forEach((row) => {
+        if (row.local_id && row.id) {
+          localToUuidMap.set(String(row.local_id), row.id);
+        }
+      });
+    }
 
     const studentUuids = Array.from(localToUuidMap.values());
 
     // Se houver UUIDs de alunos salvos, excluir os registros filhos existentes vinculados a esses UUIDs para evitar duplicação
     if (studentUuids.length > 0) {
-      await Promise.all([
+      const deleteResults = await Promise.all([
         supabase.from('student_schedules').delete().in('student_id', studentUuids),
         supabase.from('class_logs').delete().in('student_id', studentUuids),
         supabase.from('payment_history').delete().in('student_id', studentUuids),
         supabase.from('student_notes').delete().in('student_id', studentUuids),
       ]);
-    }
 
-    // Preparar sub-tabelas vinculando ao UUID real do aluno e sem enviar o id local
-    const allSchedules: Array<Record<string, unknown>> = [];
-    const allClassLogs: Array<Record<string, unknown>> = [];
-    const allPaymentHistory: Array<Record<string, unknown>> = [];
-    const allNotes: Array<Record<string, unknown>> = [];
-
-    students.forEach((std) => {
-      const realStudentUuid = localToUuidMap.get(std.id);
-      if (!realStudentUuid) return;
-
-      // schedules
-      (std.schedules || []).forEach((sched) => {
-        allSchedules.push({
-          student_id: realStudentUuid,
-          day: sched.day,
-          start_time: sched.startTime,
-          end_time: sched.endTime,
-          location_url: sched.locationUrl || null,
-        });
-      });
-
-      // classLogs
-      (std.classLogs || []).forEach((log) => {
-        allClassLogs.push({
-          student_id: realStudentUuid,
-          class_number: log.classNumber,
-          date: log.date,
-          duration_minutes: log.durationMinutes,
-          topic: log.topic || null,
-          grammar_focus: log.grammarFocus || null,
-          notes: log.notes || null,
-          homework_assigned: log.homeworkAssigned || null,
-          attended: log.attended ?? true,
-        });
-      });
-
-      // paymentHistory
-      (std.paymentHistory || []).forEach((pay) => {
-        allPaymentHistory.push({
-          student_id: realStudentUuid,
-          month_year: pay.monthYear,
-          amount: pay.amount,
-          status: pay.status,
-          paid_date: pay.paidDate || null,
-          method: pay.method || null,
-          notes: pay.notes || null,
-        });
-      });
-
-      // notes
-      (std.notes || []).forEach((note) => {
-        allNotes.push({
-          student_id: realStudentUuid,
-          created_at: note.createdAt || new Date().toISOString(),
-          updated_at: note.updatedAt || null,
-          category: note.category,
-          title: note.title,
-          content: note.content,
-          pinned: note.pinned || false,
-        });
-      });
-    });
-
-    // Inserir registros filhos
-    if (allSchedules.length > 0) {
-      const { error } = await supabase.from('student_schedules').insert(allSchedules);
-      if (error) {
-        console.error('=== ERRO SUPABASE AO SALVAR STUDENT_SCHEDULES ===');
-        console.error('Mensagem:', error.message, 'Código:', error.code, 'Detalhes:', error.details, 'Hint:', error.hint);
+      for (const res of deleteResults) {
+        if (res.error) {
+          console.error('=== ERRO AO LIMPAR SUB-TABELAS ===', res.error);
+          return {
+            success: false,
+            message: `Erro ao limpar sub-tabelas no Supabase: ${res.error.message}`,
+            error: res.error.message,
+          };
+        }
       }
     }
 
-    if (allClassLogs.length > 0) {
-      const { error } = await supabase.from('class_logs').insert(allClassLogs);
-      if (error) {
-        console.error('=== ERRO SUPABASE AO SALVAR CLASS_LOGS ===');
-        console.error('Mensagem:', error.message, 'Código:', error.code, 'Detalhes:', error.details, 'Hint:', error.hint);
+    // 3. Construir os arrays scheduleRows, classLogRows, paymentRows e noteRows
+    const scheduleRows: Array<Record<string, unknown>> = [];
+    const classLogRows: Array<Record<string, unknown>> = [];
+    const paymentRows: Array<Record<string, unknown>> = [];
+    const noteRows: Array<Record<string, unknown>> = [];
+
+    for (const student of students) {
+      const realStudentUuid = localToUuidMap.get(String(student.id));
+      if (!realStudentUuid) {
+        console.warn(`UUID real não encontrado para o aluno com local_id=${student.id}`);
+        continue;
+      }
+
+      // student.schedules -> scheduleRows
+      if (Array.isArray(student.schedules)) {
+        for (const sched of student.schedules) {
+          scheduleRows.push({
+            student_id: realStudentUuid,
+            day: sched.day,
+            start_time: sched.startTime,
+            end_time: sched.endTime,
+            location_url: sched.locationUrl || null,
+          });
+        }
+      }
+
+      // student.classLogs -> classLogRows
+      if (Array.isArray(student.classLogs)) {
+        for (const log of student.classLogs) {
+          classLogRows.push({
+            student_id: realStudentUuid,
+            class_number: log.classNumber,
+            date: log.date,
+            duration_minutes: log.durationMinutes,
+            topic: log.topic || null,
+            grammar_focus: log.grammarFocus || null,
+            notes: log.notes || null,
+            homework_assigned: log.homeworkAssigned || null,
+            attended: log.attended ?? true,
+          });
+        }
+      }
+
+      // student.paymentHistory -> paymentRows
+      if (Array.isArray(student.paymentHistory)) {
+        for (const pay of student.paymentHistory) {
+          paymentRows.push({
+            student_id: realStudentUuid,
+            month_year: pay.monthYear,
+            amount: pay.amount,
+            status: pay.status,
+            paid_date: pay.paidDate || null,
+            method: pay.method || null,
+            notes: pay.notes || null,
+          });
+        }
+      }
+
+      // student.notes -> noteRows
+      if (Array.isArray(student.notes)) {
+        for (const note of student.notes) {
+          noteRows.push({
+            student_id: realStudentUuid,
+            created_at: note.createdAt || new Date().toISOString(),
+            updated_at: note.updatedAt || null,
+            category: note.category,
+            title: note.title,
+            content: note.content,
+            pinned: note.pinned ?? false,
+          });
+        }
       }
     }
 
-    if (allPaymentHistory.length > 0) {
-      const { error } = await supabase.from('payment_history').insert(allPaymentHistory);
-      if (error) {
-        console.error('=== ERRO SUPABASE AO SALVAR PAYMENT_HISTORY ===');
-        console.error('Mensagem:', error.message, 'Código:', error.code, 'Detalhes:', error.details, 'Hint:', error.hint);
-      }
-    }
+    // 4. Inserir esses arrays utilizando await e tratar erros de forma estrita
+    // student_schedules
+    if (scheduleRows.length > 0) {
+      const { error: scheduleError } = await supabase
+        .from('student_schedules')
+        .insert(scheduleRows);
 
-    if (allNotes.length > 0) {
-      const { error } = await supabase.from('student_notes').insert(allNotes);
-      if (error) {
-        console.error('=== ERRO SUPABASE AO SALVAR STUDENT_NOTES ===');
-        console.error('Mensagem:', error.message, 'Código:', error.code, 'Detalhes:', error.details, 'Hint:', error.hint);
+      if (scheduleError) {
+        console.error('=== ERRO SUPABASE AO SALVAR STUDENT_SCHEDULES ===', scheduleError);
+        return {
+          success: false,
+          message: `Erro ao inserir student_schedules: ${scheduleError.message}`,
+          error: `Mensagem: ${scheduleError.message} | Código: ${scheduleError.code || 'N/A'} | Detalhes: ${scheduleError.details || ''} | Hint: ${scheduleError.hint || ''}`,
+        };
       }
     }
+    console.log(`Quantidade de schedules inseridos: ${scheduleRows.length}`);
+
+    // class_logs
+    if (classLogRows.length > 0) {
+      const { error: classLogError } = await supabase
+        .from('class_logs')
+        .insert(classLogRows);
+
+      if (classLogError) {
+        console.error('=== ERRO SUPABASE AO SALVAR CLASS_LOGS ===', classLogError);
+        return {
+          success: false,
+          message: `Erro ao inserir class_logs: ${classLogError.message}`,
+          error: `Mensagem: ${classLogError.message} | Código: ${classLogError.code || 'N/A'} | Detalhes: ${classLogError.details || ''} | Hint: ${classLogError.hint || ''}`,
+        };
+      }
+    }
+    console.log(`Quantidade de class_logs inseridos: ${classLogRows.length}`);
+
+    // payment_history
+    if (paymentRows.length > 0) {
+      const { error: paymentError } = await supabase
+        .from('payment_history')
+        .insert(paymentRows);
+
+      if (paymentError) {
+        console.error('=== ERRO SUPABASE AO SALVAR PAYMENT_HISTORY ===', paymentError);
+        return {
+          success: false,
+          message: `Erro ao inserir payment_history: ${paymentError.message}`,
+          error: `Mensagem: ${paymentError.message} | Código: ${paymentError.code || 'N/A'} | Detalhes: ${paymentError.details || ''} | Hint: ${paymentError.hint || ''}`,
+        };
+      }
+    }
+    console.log(`Quantidade de payment_history inseridos: ${paymentRows.length}`);
+
+    // student_notes
+    if (noteRows.length > 0) {
+      const { error: noteError } = await supabase
+        .from('student_notes')
+        .insert(noteRows);
+
+      if (noteError) {
+        console.error('=== ERRO SUPABASE AO SALVAR STUDENT_NOTES ===', noteError);
+        return {
+          success: false,
+          message: `Erro ao inserir student_notes: ${noteError.message}`,
+          error: `Mensagem: ${noteError.message} | Código: ${noteError.code || 'N/A'} | Detalhes: ${noteError.details || ''} | Hint: ${noteError.hint || ''}`,
+        };
+      }
+    }
+    console.log(`Quantidade de student_notes inseridos: ${noteRows.length}`);
 
     return {
       success: true,
