@@ -21,12 +21,27 @@ import { WhatsAppModal } from './components/WhatsAppModal';
 import { StudentReportModal } from './components/StudentReportModal';
 import { BackupRestoreView } from './components/BackupRestoreView';
 import { SupabaseTest } from './components/SupabaseTest';
+import { Login } from './pages/Login';
 import { exportBackupJSON, importBackupJSON } from './utils/backup';
 import { Check, Info } from 'lucide-react';
 
 export default function App() {
   const [students, setStudents] = useState<Student[]>([]);
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [viewMode, setViewMode] = useState<ViewMode>(() =>
+    window.location.pathname === '/login' ? 'login' : 'grid'
+  );
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (window.location.pathname === '/login') {
+        setViewMode('login');
+      } else if (window.location.pathname === '/' || window.location.pathname === '') {
+        setViewMode((prev) => (prev === 'login' ? 'grid' : prev));
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Selected Student for Detail Modal
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
@@ -265,6 +280,32 @@ export default function App() {
           />
         ) : viewMode === 'supabase_test' ? (
           <SupabaseTest onBack={() => setViewMode('grid')} />
+        ) : viewMode === 'login' || window.location.pathname === '/login' ? (
+          <div className="relative">
+            <div className="max-w-md mx-auto pt-4 px-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode('grid');
+                  if (window.location.pathname === '/login') {
+                    window.history.pushState({}, '', '/');
+                  }
+                }}
+                className="text-xs font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white underline"
+              >
+                ← Voltar para o aplicativo
+              </button>
+            </div>
+            <Login
+              onSuccess={() => {
+                showToast('Autenticado com sucesso!');
+                setViewMode('grid');
+                if (window.location.pathname === '/login') {
+                  window.history.pushState({}, '', '/');
+                }
+              }}
+            />
+          </div>
         ) : (
           <PaymentTrackerView
             students={students}

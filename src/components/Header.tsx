@@ -13,7 +13,8 @@ import {
   Download,
   Upload,
   HardDrive,
-  Database
+  Database,
+  LogIn
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -143,7 +144,9 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             <button
-              onClick={() => setViewMode('supabase_test')}
+              onClick={() => {
+                setViewMode('supabase_test');
+              }}
               className={`flex items-center gap-2 px-3.5 h-8 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
                 viewMode === 'supabase_test'
                   ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
@@ -152,6 +155,23 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Database className="w-4 h-4 shrink-0 text-cyan-500" />
               <span>Supabase Test</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setViewMode('login');
+                if (window.location.pathname !== '/login') {
+                  window.history.pushState({}, '', '/login');
+                }
+              }}
+              className={`flex items-center gap-2 px-3.5 h-8 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                viewMode === 'login'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <LogIn className="w-4 h-4 shrink-0 text-emerald-500" />
+              <span>Login / Auth</span>
             </button>
           </div>
 

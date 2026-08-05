@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export interface SupabaseTestResult {
   success: boolean;
@@ -7,6 +7,13 @@ export interface SupabaseTestResult {
 }
 
 export async function testSupabaseConnection(): Promise<SupabaseTestResult> {
+  if (!isSupabaseConfigured) {
+    return {
+      success: false,
+      error: 'Supabase environment variables are missing (VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY must be defined).',
+    };
+  }
+
   try {
     const { data, error } = await supabase
       .from('profiles')
@@ -31,3 +38,4 @@ export async function testSupabaseConnection(): Promise<SupabaseTestResult> {
     };
   }
 }
+
