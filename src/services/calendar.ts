@@ -33,6 +33,30 @@ export interface CalendarEventRow {
   updated_at?: string | null;
 }
 
+/**
+ * Interface estrita do Payload enviado ao Supabase (SEM A PROPRIEDADE 'id').
+ * A coluna 'id' no banco é UUID auto-gerada.
+ */
+export interface CalendarEventPayload {
+  local_id: string;
+  user_id: string;
+  student_id: string | null;
+  title: string;
+  description: string | null;
+  start_at: string;
+  end_at: string;
+  event_type: string;
+  status: string;
+  location_url: string | null;
+  color: string | null;
+  all_day: boolean;
+  recurrence_type: string;
+  recurrence_interval: number | null;
+  recurrence_end_date: string | null;
+  reminder_minutes: number | null;
+  source_schedule_id: string | null;
+}
+
 export interface CalendarServiceResult<T = unknown> {
   success: boolean;
   data: T | null;
@@ -70,14 +94,25 @@ const ALLOWED_RECURRENCE_TYPES: CalendarRecurrenceType[] = [
   'monthly',
 ];
 
-// Helper para validar UUID v4 / v1
-function isUUID(str?: string | null): boolean {
-  if (!str) return false;
+/**
+ * Valida se um valor é um UUID v4/v1 válido.
+ */
+export function isValidUuid(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  return uuidRegex.test(str);
+  return uuidRegex.test(value);
 }
 
-// Helper para padronizar retornos do service
+/**
+ * Garante defensivamente que o payload enviado ao Supabase NUNCA contenha a propriedade 'id'.
+ */
+function assertNoIdInPayload(payload: object): void {
+  if ('id' in payload) {
+    throw new Error('Calendar Supabase payload must not contain id');
+  }
+}
+
+// Helper para padronizar retornos do serviço
 function createResult<T>(
   success: boolean,
   data: T | null,
@@ -87,9 +122,21 @@ function createResult<T>(
   hint: string | null = null,
   code: string | null = null
 ): CalendarServiceResult<T> {
-  const errCode = code || (error && typeof error === 'object' && 'code' in error ? String(error.code) : null);
-  const errDetails = details || (error && typeof error === 'object' && 'details' in error ? String(error.details || '') : null) || null;
-  const errHint = hint || (error && typeof error === 'object' && 'hint' in error ? String(error.hint || '') : null) || null;
+  const errCode =
+    code ||
+    (error && typeof error === 'object' && 'code' in error ? String(error.code) : null);
+  const errDetails =
+    details ||
+    (error && typeof error === 'object' && 'details' in error
+      ? String(error.details || '')
+      : null) ||
+    null;
+  const errHint =
+    hint ||
+    (error && typeof error === 'object' && 'hint' in error
+      ? String(error.hint || '')
+      : null) ||
+    null;
 
   return {
     success,
@@ -147,9 +194,16 @@ function removeLocalCacheItem(id: string): void {
 // 3. CAMADA DE TRANSFORMAÇÃO (SNAKE_CASE <-> CAMELCASE)
 // ============================================================================
 
+/**
+ * Converte um registro do banco (snake_case) em objeto CalendarEvent (camelCase).
+ * Preserva o ID textual no campo `id` e o UUID do Supabase em `remoteId`.
+ */
 export function mapRowToEvent(row: CalendarEventRow): CalendarEvent {
-  const localId = row.local_id && row.local_id.trim() !== '' ? row.local_id : (row.id || `evt_${Date.now()}`);
-  const remoteUuid = isUUID(row.id) ? row.id : undefined;
+  const localId =
+    row.local_id && row.local_id.trim() !== ''
+      ? row.local_id
+      : row.id || `evt_${Date.now()}`;
+  const remoteUuid = isValidUuid(row.id) ? row.id : undefined;
 
   return {
     id: localId,
@@ -183,53 +237,69 @@ export function mapRowToEvent(row: CalendarEventRow): CalendarEvent {
   };
 }
 
+/**
+ * Mapeia um CalendarEvent para o payload enviado ao Supabase.
+ * NUNCA INCLUI 'id' OU 'remoteId' NO RETORNO.
+ */
 export function mapEventToRow(
   event: Partial<CalendarEvent>,
-  userId?: string
-): Partial<CalendarEventRow> {
-  const row: Partial<CalendarEventRow> = {};
+  userId: string
+): CalendarEventPayload {
+  return {
+    user_id: userId,
+    local_id: event.id || '',
+    student_id: event.studentId || null,
+    title: event.title || 'Untitled Event',
+    description: event.description || null,
+    start_at: event.startAt || new Date().toISOString(),
+    end_at: event.endAt || new Date().toISOString(),
+    event_type: event.eventType || 'other',
+    status: event.status || 'scheduled',
+    location_url: event.locationUrl || null,
+    color: event.color || null,
+    all_day: event.allDay ?? false,
+    recurrence_type: event.recurrenceType || 'none',
+    recurrence_interval: event.recurrenceInterval || null,
+    recurrence_end_date: event.recurrenceEndDate || null,
+    reminder_minutes: event.reminderMinutes || null,
+    source_schedule_id: event.sourceScheduleId || null,
+  };
+}
 
-  // IMPORTANTE: Nunca enviar IDs no formato evt_... para a coluna id (UUID)
-  if (event.remoteId && isUUID(event.remoteId)) {
-    row.id = event.remoteId;
-  } else if (event.id && isUUID(event.id)) {
-    row.id = event.id;
-  }
+/**
+ * Mapeia atualizações parciais sem incluir 'id' ou 'remoteId'.
+ */
+export function mapEventToPartialRow(
+  event: Partial<CalendarEvent>,
+  userId: string
+): Partial<CalendarEventPayload> {
+  const payload: Partial<CalendarEventPayload> = {
+    user_id: userId,
+  };
 
-  // local_id é sempre o ID textual usado pelo frontend (ex: evt_...)
-  if (event.id) {
-    row.local_id = event.id;
-  }
-
-  const uId = userId || event.userId;
-  if (uId) {
-    row.user_id = uId;
-  }
-
-  if (event.studentId !== undefined) row.student_id = event.studentId || null;
-  if (event.title !== undefined) row.title = event.title;
-  if (event.description !== undefined) row.description = event.description || null;
-  if (event.startAt !== undefined) row.start_at = event.startAt;
-  if (event.endAt !== undefined) row.end_at = event.endAt;
-  if (event.eventType !== undefined) row.event_type = event.eventType;
-  if (event.status !== undefined) row.status = event.status;
-  if (event.locationUrl !== undefined) row.location_url = event.locationUrl || null;
-  if (event.color !== undefined) row.color = event.color || null;
-  if (event.allDay !== undefined) row.all_day = event.allDay;
+  if (event.id !== undefined) payload.local_id = event.id;
+  if (event.studentId !== undefined) payload.student_id = event.studentId || null;
+  if (event.title !== undefined) payload.title = event.title;
+  if (event.description !== undefined) payload.description = event.description || null;
+  if (event.startAt !== undefined) payload.start_at = event.startAt;
+  if (event.endAt !== undefined) payload.end_at = event.endAt;
+  if (event.eventType !== undefined) payload.event_type = event.eventType;
+  if (event.status !== undefined) payload.status = event.status;
+  if (event.locationUrl !== undefined) payload.location_url = event.locationUrl || null;
+  if (event.color !== undefined) payload.color = event.color || null;
+  if (event.allDay !== undefined) payload.all_day = event.allDay;
   if (event.recurrenceType !== undefined)
-    row.recurrence_type = event.recurrenceType || 'none';
+    payload.recurrence_type = event.recurrenceType || 'none';
   if (event.recurrenceInterval !== undefined)
-    row.recurrence_interval = event.recurrenceInterval || null;
+    payload.recurrence_interval = event.recurrenceInterval || null;
   if (event.recurrenceEndDate !== undefined)
-    row.recurrence_end_date = event.recurrenceEndDate || null;
+    payload.recurrence_end_date = event.recurrenceEndDate || null;
   if (event.reminderMinutes !== undefined)
-    row.reminder_minutes = event.reminderMinutes || null;
+    payload.reminder_minutes = event.reminderMinutes || null;
   if (event.sourceScheduleId !== undefined)
-    row.source_schedule_id = event.sourceScheduleId || null;
-  if (event.createdAt !== undefined) row.created_at = event.createdAt;
-  if (event.updatedAt !== undefined) row.updated_at = event.updatedAt;
+    payload.source_schedule_id = event.sourceScheduleId || null;
 
-  return row;
+  return payload;
 }
 
 // ============================================================================
@@ -304,7 +374,7 @@ export function validateCalendarEvent(
 }
 
 // ============================================================================
-// 5. CAMADA DE REENVO E SINCRONIZAÇÃO DE PENDÊNCIAS
+// 5. CAMADA DE REENVIO E SINCRONIZAÇÃO DE PENDÊNCIAS
 // ============================================================================
 
 /**
@@ -316,7 +386,10 @@ export async function syncPendingCalendarEvents(): Promise<CalendarServiceResult
   }
 
   try {
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
     if (userError || !user) {
       return createResult(false, 0, 'User not authenticated.');
     }
@@ -331,18 +404,21 @@ export async function syncPendingCalendarEvents(): Promise<CalendarServiceResult
 
     for (let i = 0; i < updatedCache.length; i++) {
       const event = updatedCache[i];
-      const rowData = mapEventToRow(event, user.id);
-      rowData.local_id = event.id;
-      rowData.user_id = user.id;
+      const payload = mapEventToRow(event, user.id);
+      payload.local_id = event.id;
+      payload.user_id = user.id;
+
+      console.log('[calendar sync payload]', JSON.stringify(payload, null, 2));
+      assertNoIdInPayload(payload);
 
       const { data, error } = await supabase
         .from('calendar_events')
-        .upsert([rowData], { onConflict: 'user_id,local_id' })
+        .upsert([payload], { onConflict: 'user_id,local_id' })
         .select('*')
         .maybeSingle();
 
       if (!error && data) {
-        if (data.id && isUUID(data.id)) {
+        if (isValidUuid(data.id)) {
           updatedCache[i] = {
             ...event,
             remoteId: data.id,
@@ -353,7 +429,11 @@ export async function syncPendingCalendarEvents(): Promise<CalendarServiceResult
     }
 
     writeLocalCalendarCache(updatedCache);
-    return createResult(true, syncedCount, `Successfully synced ${syncedCount} calendar events.`);
+    return createResult(
+      true,
+      syncedCount,
+      `Successfully synced ${syncedCount} calendar events.`
+    );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown exception';
     return createResult(false, 0, `Failed to sync pending events: ${msg}`, err);
@@ -387,7 +467,10 @@ export async function getCalendarEvents(filters?: {
   }
 
   try {
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
     if (userError || !user) {
       const cached = readLocalCalendarCache();
       return createResult(
@@ -443,7 +526,7 @@ export async function getCalendarEvents(filters?: {
 }
 
 /**
- * Busca um único evento do calendário pelo ID.
+ * Busca um único evento do calendário pelo ID local ou remoto.
  */
 export async function getCalendarEvent(
   id: string
@@ -454,7 +537,7 @@ export async function getCalendarEvent(
 
   if (!isSupabaseConfigured) {
     const cached = readLocalCalendarCache();
-    const found = cached.find((e) => e.id === id) || null;
+    const found = cached.find((e) => e.id === id || e.remoteId === id) || null;
     return createResult(
       true,
       found,
@@ -463,15 +546,17 @@ export async function getCalendarEvent(
   }
 
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) {
       const cached = readLocalCalendarCache();
-      const found = cached.find((e) => e.id === id) || null;
+      const found = cached.find((e) => e.id === id || e.remoteId === id) || null;
       return createResult(true, found, 'Unauthenticated user. Checked local cache.');
     }
 
     let query = supabase.from('calendar_events').select('*').eq('user_id', user.id);
-    if (isUUID(id)) {
+    if (isValidUuid(id)) {
       query = query.eq('id', id);
     } else {
       query = query.eq('local_id', id);
@@ -491,8 +576,12 @@ export async function getCalendarEvent(
 
     if (!data) {
       const cached = readLocalCalendarCache();
-      const found = cached.find((e) => e.id === id) || null;
-      return createResult(true, found, found ? 'Event found in local cache.' : 'Calendar event not found.');
+      const found = cached.find((e) => e.id === id || e.remoteId === id) || null;
+      return createResult(
+        true,
+        found,
+        found ? 'Event found in local cache.' : 'Calendar event not found.'
+      );
     }
 
     const event = mapRowToEvent(data);
@@ -513,14 +602,11 @@ export async function createCalendarEvent(
 ): Promise<CalendarServiceResult<CalendarEvent>> {
   const validation = validateCalendarEvent(eventData, false);
   if (!validation.valid) {
-    return createResult(
-      false,
-      null,
-      `Validation failed: ${validation.message}`
-    );
+    return createResult(false, null, `Validation failed: ${validation.message}`);
   }
 
-  const generatedId = eventData.id || `evt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  const generatedId =
+    eventData.id || `evt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   const now = new Date().toISOString();
 
   const newEvent: CalendarEvent = {
@@ -541,7 +627,10 @@ export async function createCalendarEvent(
   }
 
   try {
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
     if (userError || !user) {
       return createResult(
         true,
@@ -553,12 +642,17 @@ export async function createCalendarEvent(
 
     newEvent.userId = user.id;
 
-    // Converte para formato do banco garantindo que id não leve evt_...
-    const rowData = mapEventToRow(newEvent, user.id);
+    // Converte para formato do banco garantindo estritamente que 'id' NUNCA é enviado
+    const payload = mapEventToRow(newEvent, user.id);
+    payload.local_id = generatedId;
+    payload.user_id = user.id;
+
+    console.log('[calendar sync payload]', JSON.stringify(payload, null, 2));
+    assertNoIdInPayload(payload);
 
     const { data, error } = await supabase
       .from('calendar_events')
-      .upsert([rowData], { onConflict: 'user_id,local_id' })
+      .upsert([payload], { onConflict: 'user_id,local_id' })
       .select('*')
       .single();
 
@@ -575,7 +669,7 @@ export async function createCalendarEvent(
     if (data) {
       const createdEvent = mapRowToEvent(data);
       createdEvent.id = generatedId; // Preserva ID local textual
-      if (isUUID(data.id)) {
+      if (isValidUuid(data.id)) {
         createdEvent.remoteId = data.id;
       }
       updateLocalCacheItem(createdEvent);
@@ -595,7 +689,7 @@ export async function createCalendarEvent(
 }
 
 /**
- * Atualiza um evento de calendário existente pelo ID.
+ * Atualiza um evento de calendário existente pelo ID local.
  */
 export async function updateCalendarEvent(
   id: string,
@@ -647,7 +741,10 @@ export async function updateCalendarEvent(
   }
 
   try {
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
     if (userError || !user) {
       return createResult(
         true,
@@ -657,23 +754,33 @@ export async function updateCalendarEvent(
       );
     }
 
-    const rowUpdates = mapEventToRow({ ...updates, updatedAt: now }, user.id);
-    rowUpdates.local_id = id;
-    rowUpdates.user_id = user.id;
+    const payload = mapEventToPartialRow(updates, user.id);
+    payload.local_id = id;
+    payload.user_id = user.id;
+
+    console.log('[calendar sync payload]', JSON.stringify(payload, null, 2));
+    assertNoIdInPayload(payload);
 
     let query;
-    if (updatedEvent.remoteId && isUUID(updatedEvent.remoteId)) {
+    if (updatedEvent.remoteId && isValidUuid(updatedEvent.remoteId)) {
       query = supabase
         .from('calendar_events')
-        .update(rowUpdates)
+        .update(payload)
         .eq('id', updatedEvent.remoteId)
         .eq('user_id', user.id)
         .select('*')
         .maybeSingle();
     } else {
+      const fullPayload = mapEventToRow(updatedEvent, user.id);
+      fullPayload.local_id = id;
+      fullPayload.user_id = user.id;
+
+      console.log('[calendar sync payload]', JSON.stringify(fullPayload, null, 2));
+      assertNoIdInPayload(fullPayload);
+
       query = supabase
         .from('calendar_events')
-        .upsert([rowUpdates], { onConflict: 'user_id,local_id' })
+        .upsert([fullPayload], { onConflict: 'user_id,local_id' })
         .select('*')
         .maybeSingle();
     }
@@ -693,7 +800,7 @@ export async function updateCalendarEvent(
     if (data) {
       const finalEvent = mapRowToEvent(data);
       finalEvent.id = id;
-      if (isUUID(data.id)) {
+      if (isValidUuid(data.id)) {
         finalEvent.remoteId = data.id;
       }
       updateLocalCacheItem(finalEvent);
@@ -713,7 +820,7 @@ export async function updateCalendarEvent(
 }
 
 /**
- * Remove um evento do calendário pelo ID.
+ * Remove um evento do calendário pelo ID local ou remoto.
  */
 export async function deleteCalendarEvent(
   id: string
@@ -723,7 +830,7 @@ export async function deleteCalendarEvent(
   }
 
   const cached = readLocalCalendarCache();
-  const found = cached.find((e) => e.id === id);
+  const found = cached.find((e) => e.id === id || e.remoteId === id);
 
   removeLocalCacheItem(id);
 
@@ -736,7 +843,10 @@ export async function deleteCalendarEvent(
   }
 
   try {
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
     if (userError || !user) {
       return createResult(
         true,
@@ -747,13 +857,13 @@ export async function deleteCalendarEvent(
     }
 
     let query;
-    if (found?.remoteId && isUUID(found.remoteId)) {
+    if (found?.remoteId && isValidUuid(found.remoteId)) {
       query = supabase
         .from('calendar_events')
         .delete()
         .eq('id', found.remoteId)
         .eq('user_id', user.id);
-    } else if (isUUID(id)) {
+    } else if (isValidUuid(id)) {
       query = supabase
         .from('calendar_events')
         .delete()
@@ -803,8 +913,24 @@ export async function getEventsForDay(
     return createResult(false, [], 'Invalid date parameter provided.');
   }
 
-  const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0).toISOString();
-  const endOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999).toISOString();
+  const startOfDay = new Date(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate(),
+    0,
+    0,
+    0,
+    0
+  ).toISOString();
+  const endOfDay = new Date(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate(),
+    23,
+    59,
+    59,
+    999
+  ).toISOString();
 
   return getEventsBetweenDates(startOfDay, endOfDay, studentId);
 }
@@ -846,7 +972,10 @@ export async function getEventsBetweenDates(
   }
 
   try {
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
     if (userError || !user) {
       const cached = readLocalCalendarCache();
       const filtered = cached.filter((e) => {
@@ -854,9 +983,17 @@ export async function getEventsBetweenDates(
         const eEnd = new Date(e.endAt).getTime();
         const rangeStart = new Date(startIso).getTime();
         const rangeEnd = new Date(endIso).getTime();
-        return eStart <= rangeEnd && eEnd >= rangeStart && (!studentId || e.studentId === studentId);
+        return (
+          eStart <= rangeEnd &&
+          eEnd >= rangeStart &&
+          (!studentId || e.studentId === studentId)
+        );
       });
-      return createResult(true, filtered, 'Unauthenticated user. Filtered local cache.');
+      return createResult(
+        true,
+        filtered,
+        'Unauthenticated user. Filtered local cache.'
+      );
     }
 
     let query = supabase
@@ -905,7 +1042,11 @@ export async function getUpcomingEvents(
     const cached = readLocalCalendarCache();
     const nowMs = Date.now();
     const upcoming = cached
-      .filter((e) => new Date(e.startAt).getTime() >= nowMs && (!studentId || e.studentId === studentId))
+      .filter(
+        (e) =>
+          new Date(e.startAt).getTime() >= nowMs &&
+          (!studentId || e.studentId === studentId)
+      )
       .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
       .slice(0, limit);
 
@@ -913,16 +1054,27 @@ export async function getUpcomingEvents(
   }
 
   try {
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
     if (userError || !user) {
       const cached = readLocalCalendarCache();
       const nowMs = Date.now();
       const upcoming = cached
-        .filter((e) => new Date(e.startAt).getTime() >= nowMs && (!studentId || e.studentId === studentId))
+        .filter(
+          (e) =>
+            new Date(e.startAt).getTime() >= nowMs &&
+            (!studentId || e.studentId === studentId)
+        )
         .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
         .slice(0, limit);
 
-      return createResult(true, upcoming, 'Unauthenticated user. Loaded from local cache.');
+      return createResult(
+        true,
+        upcoming,
+        'Unauthenticated user. Loaded from local cache.'
+      );
     }
 
     let query = supabase
