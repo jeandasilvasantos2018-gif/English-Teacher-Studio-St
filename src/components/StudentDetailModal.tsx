@@ -62,12 +62,32 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   const [name, setName] = useState(student.name);
   const [email, setEmail] = useState(student.email);
   const [phone, setPhone] = useState(student.phone || '');
+  const [avatarUrl, setAvatarUrl] = useState(student.avatarUrl || '');
   const [targetGoal, setTargetGoal] = useState(student.targetGoal || '');
   const [englishLevel, setEnglishLevel] = useState<EnglishLevel>(student.englishLevel);
   const [monthlyFee, setMonthlyFee] = useState<number>(student.monthlyFee);
   const [currencySymbol, setCurrencySymbol] = useState<string>(student.currencySymbol || '$');
   const [dueDayOfMonth, setDueDayOfMonth] = useState<number>(student.dueDayOfMonth || 5);
   const [currentClassNumber, setCurrentClassNumber] = useState<number>(student.currentClassNumber);
+  const [active, setActive] = useState<boolean>(student.active ?? true);
+
+  React.useEffect(() => {
+    if (student) {
+      setName(student.name);
+      setEmail(student.email);
+      setPhone(student.phone || '');
+      setAvatarUrl(student.avatarUrl || '');
+      setTargetGoal(student.targetGoal || '');
+      setEnglishLevel(student.englishLevel);
+      setMonthlyFee(student.monthlyFee);
+      setCurrencySymbol(student.currencySymbol || '$');
+      setDueDayOfMonth(student.dueDayOfMonth || 5);
+      setCurrentClassNumber(student.currentClassNumber);
+      setActive(student.active ?? true);
+      setSchedules(student.schedules || []);
+      setIsEditingProfile(false);
+    }
+  }, [student?.id]);
 
   // Local state for schedules
   const [schedules, setSchedules] = useState<ClassScheduleSlot[]>(student.schedules || []);
@@ -87,6 +107,22 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   const levelInfo = CEFR_LEVELS[student.englishLevel] || CEFR_LEVELS.B1;
   const paymentInfo = getCurrentMonthPaymentStatus(student);
 
+  // Cancel editing profile
+  const handleCancelEdit = () => {
+    setName(student.name);
+    setEmail(student.email);
+    setPhone(student.phone || '');
+    setAvatarUrl(student.avatarUrl || '');
+    setTargetGoal(student.targetGoal || '');
+    setEnglishLevel(student.englishLevel);
+    setMonthlyFee(student.monthlyFee);
+    setCurrencySymbol(student.currencySymbol || '$');
+    setDueDayOfMonth(student.dueDayOfMonth || 5);
+    setCurrentClassNumber(student.currentClassNumber);
+    setActive(student.active ?? true);
+    setIsEditingProfile(false);
+  };
+
   // Save profile changes
   const handleSaveProfile = () => {
     onUpdateStudent({
@@ -94,12 +130,14 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
       name,
       email,
       phone,
+      avatarUrl: avatarUrl || undefined,
       targetGoal,
       englishLevel,
       monthlyFee,
       currencySymbol,
       dueDayOfMonth,
       currentClassNumber,
+      active,
       schedules,
     });
     setIsEditingProfile(false);
@@ -226,6 +264,25 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
 
             {/* Quick Stat Pill & Action Buttons in Modal Header */}
             <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-auto justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  if (isEditingProfile) {
+                    handleCancelEdit();
+                  } else {
+                    setIsEditingProfile(true);
+                  }
+                }}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md border ${
+                  isEditingProfile
+                    ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-400/30'
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-400/30'
+                }`}
+              >
+                <Edit3 className="w-4 h-4" />
+                <span>{isEditingProfile ? 'Cancel Editing' : 'Edit Student'}</span>
+              </button>
+
               {onOpenWhatsApp && (
                 <button
                   type="button"
@@ -265,6 +322,192 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
 
           </div>
         </div>
+
+        {/* Render Edit Profile Form if editing mode is active */}
+        {isEditingProfile ? (
+          <div className="p-6 overflow-y-auto flex-1 space-y-6">
+            <div className="bg-slate-50 dark:bg-slate-800/60 p-5 rounded-2xl border border-indigo-200 dark:border-indigo-900/50 space-y-5">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
+                <div>
+                  <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
+                    <Edit3 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    <span>Edit Student Profile</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Update basic student details, contact info, English level, tuition fee and active status.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                {/* Full Name */}
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-bold focus:ring-2 focus:ring-indigo-500"
+                    required
+                  />
+                </div>
+
+                {/* Email Address */}
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Email Address *
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-medium focus:ring-2 focus:ring-indigo-500"
+                    required
+                  />
+                </div>
+
+                {/* Phone / WhatsApp */}
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Phone / WhatsApp
+                  </label>
+                  <input
+                    type="text"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+55 11 99999-9999"
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-medium focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                {/* Avatar URL */}
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Avatar URL (Photo link)
+                  </label>
+                  <input
+                    type="url"
+                    value={avatarUrl}
+                    onChange={(e) => setAvatarUrl(e.target.value)}
+                    placeholder="https://images.unsplash.com/..."
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-medium focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                {/* English Level */}
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    CEFR English Level
+                  </label>
+                  <select
+                    value={englishLevel}
+                    onChange={(e) => setEnglishLevel(e.target.value as EnglishLevel)}
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-bold focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {(Object.keys(CEFR_LEVELS) as EnglishLevel[]).map((lvl) => (
+                      <option key={lvl} value={lvl}>
+                        {lvl} - {CEFR_LEVELS[lvl].name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Target Goal */}
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Target English Goal
+                  </label>
+                  <input
+                    type="text"
+                    value={targetGoal}
+                    onChange={(e) => setTargetGoal(e.target.value)}
+                    placeholder="e.g. IELTS 7.5, Business Fluency"
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-medium focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                {/* Monthly Fee */}
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Monthly Fee Amount
+                  </label>
+                  <input
+                    type="number"
+                    value={monthlyFee}
+                    onChange={(e) => setMonthlyFee(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-bold focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                {/* Currency Symbol */}
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Currency Symbol
+                  </label>
+                  <input
+                    type="text"
+                    value={currencySymbol}
+                    onChange={(e) => setCurrencySymbol(e.target.value)}
+                    placeholder="$"
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-bold focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                {/* Due Day Of Month */}
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Due Day of Month (1 - 31)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={dueDayOfMonth}
+                    onChange={(e) => setDueDayOfMonth(parseInt(e.target.value, 10) || 5)}
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-bold focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                {/* Active Status */}
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Student Status
+                  </label>
+                  <select
+                    value={active ? 'true' : 'false'}
+                    onChange={(e) => setActive(e.target.value === 'true')}
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-bold focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="true">Active Student</option>
+                    <option value="false">Inactive Student</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="px-4 py-2.5 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-slate-300 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveProfile}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Save Changes</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
 
         {/* Modal Navigation Tabs */}
         <div className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 flex items-center gap-2 overflow-x-auto text-xs font-bold">
@@ -947,6 +1190,8 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
           )}
 
         </div>
+        </>
+        )}
 
         {/* Modal Footer Controls */}
         <div className="bg-slate-50 dark:bg-slate-800/80 p-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
