@@ -1,3 +1,7 @@
+/**
+ * Camada de sincronização entre LocalStorage (English Teacher Studio) e Supabase.
+ * Suporta Mapeamento de local_id, UUIDs reais e isolamento de usuário via Supabase Auth.
+ */
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Student, ClassScheduleSlot, ClassSessionLog, MonthlyPaymentRecord, StudentNote } from '../types';
 import { loadStudents } from '../utils/storage';
@@ -41,9 +45,9 @@ export async function syncStudentsToSupabase(students: Student[]): Promise<SyncR
       };
     }
 
-    // Preparar registros da tabela 'students'
+    // Preparar registros da tabela 'students' utilizando local_id
     const studentRows = students.map((std) => ({
-      id: std.id,
+      local_id: std.id,
       user_id: user.id,
       name: std.name,
       email: std.email,
@@ -59,9 +63,11 @@ export async function syncStudentsToSupabase(students: Student[]): Promise<SyncR
       created_at: std.createdAt || new Date().toISOString(),
     }));
 
-    const { error: studentUpsertError } = await supabase
+    // Realizar upsert na tabela students com onConflict 'user_id,local_id' e selecionar id (UUID real) e local_id
+    const { data: insertedStudents, error: studentUpsertError } = await supabase
       .from('students')
-      .upsert(studentRows, { onConflict: 'id' });
+      .upsert(studentRows, { onConflict: 'user_id,local_id' })
+      .select('id, local_id');
 
     if (studentUpsertError) {
       console.error('=== ERRO SUPABASE AO SALVAR ALUNOS ===');
@@ -85,18 +91,40 @@ export async function syncStudentsToSupabase(students: Student[]): Promise<SyncR
       };
     }
 
-    // Preparar sub-tabelas
+    // Criar um mapa de local_id -> id (UUID real do Supabase)
+    const localToUuidMap = new Map<string, string>();
+    (insertedStudents || []).forEach((row) => {
+      if (row.local_id && row.id) {
+        localToUuidMap.set(row.local_id, row.id);
+      }
+    });
+
+    const studentUuids = Array.from(localToUuidMap.values());
+
+    // Se houver UUIDs de alunos salvos, excluir os registros filhos existentes vinculados a esses UUIDs para evitar duplicação
+    if (studentUuids.length > 0) {
+      await Promise.all([
+        supabase.from('student_schedules').delete().in('student_id', studentUuids),
+        supabase.from('class_logs').delete().in('student_id', studentUuids),
+        supabase.from('payment_history').delete().in('student_id', studentUuids),
+        supabase.from('student_notes').delete().in('student_id', studentUuids),
+      ]);
+    }
+
+    // Preparar sub-tabelas vinculando ao UUID real do aluno e sem enviar o id local
     const allSchedules: Array<Record<string, unknown>> = [];
     const allClassLogs: Array<Record<string, unknown>> = [];
     const allPaymentHistory: Array<Record<string, unknown>> = [];
     const allNotes: Array<Record<string, unknown>> = [];
 
     students.forEach((std) => {
+      const realStudentUuid = localToUuidMap.get(std.id);
+      if (!realStudentUuid) return;
+
       // schedules
       (std.schedules || []).forEach((sched) => {
         allSchedules.push({
-          id: sched.id,
-          student_id: std.id,
+          student_id: realStudentUuid,
           day: sched.day,
           start_time: sched.startTime,
           end_time: sched.endTime,
@@ -107,8 +135,7 @@ export async function syncStudentsToSupabase(students: Student[]): Promise<SyncR
       // classLogs
       (std.classLogs || []).forEach((log) => {
         allClassLogs.push({
-          id: log.id,
-          student_id: std.id,
+          student_id: realStudentUuid,
           class_number: log.classNumber,
           date: log.date,
           duration_minutes: log.durationMinutes,
@@ -123,8 +150,7 @@ export async function syncStudentsToSupabase(students: Student[]): Promise<SyncR
       // paymentHistory
       (std.paymentHistory || []).forEach((pay) => {
         allPaymentHistory.push({
-          id: pay.id,
-          student_id: std.id,
+          student_id: realStudentUuid,
           month_year: pay.monthYear,
           amount: pay.amount,
           status: pay.status,
@@ -137,9 +163,8 @@ export async function syncStudentsToSupabase(students: Student[]): Promise<SyncR
       // notes
       (std.notes || []).forEach((note) => {
         allNotes.push({
-          id: note.id,
-          student_id: std.id,
-          created_at: note.createdAt,
+          student_id: realStudentUuid,
+          created_at: note.createdAt || new Date().toISOString(),
           updated_at: note.updatedAt || null,
           category: note.category,
           title: note.title,
@@ -149,9 +174,9 @@ export async function syncStudentsToSupabase(students: Student[]): Promise<SyncR
       });
     });
 
-    // Upsert nas sub-tabelas (se houver dados)
+    // Inserir registros filhos
     if (allSchedules.length > 0) {
-      const { error } = await supabase.from('student_schedules').upsert(allSchedules, { onConflict: 'id' });
+      const { error } = await supabase.from('student_schedules').insert(allSchedules);
       if (error) {
         console.error('=== ERRO SUPABASE AO SALVAR STUDENT_SCHEDULES ===');
         console.error('Mensagem:', error.message, 'Código:', error.code, 'Detalhes:', error.details, 'Hint:', error.hint);
@@ -159,7 +184,7 @@ export async function syncStudentsToSupabase(students: Student[]): Promise<SyncR
     }
 
     if (allClassLogs.length > 0) {
-      const { error } = await supabase.from('class_logs').upsert(allClassLogs, { onConflict: 'id' });
+      const { error } = await supabase.from('class_logs').insert(allClassLogs);
       if (error) {
         console.error('=== ERRO SUPABASE AO SALVAR CLASS_LOGS ===');
         console.error('Mensagem:', error.message, 'Código:', error.code, 'Detalhes:', error.details, 'Hint:', error.hint);
@@ -167,7 +192,7 @@ export async function syncStudentsToSupabase(students: Student[]): Promise<SyncR
     }
 
     if (allPaymentHistory.length > 0) {
-      const { error } = await supabase.from('payment_history').upsert(allPaymentHistory, { onConflict: 'id' });
+      const { error } = await supabase.from('payment_history').insert(allPaymentHistory);
       if (error) {
         console.error('=== ERRO SUPABASE AO SALVAR PAYMENT_HISTORY ===');
         console.error('Mensagem:', error.message, 'Código:', error.code, 'Detalhes:', error.details, 'Hint:', error.hint);
@@ -175,7 +200,7 @@ export async function syncStudentsToSupabase(students: Student[]): Promise<SyncR
     }
 
     if (allNotes.length > 0) {
-      const { error } = await supabase.from('student_notes').upsert(allNotes, { onConflict: 'id' });
+      const { error } = await supabase.from('student_notes').insert(allNotes);
       if (error) {
         console.error('=== ERRO SUPABASE AO SALVAR STUDENT_NOTES ===');
         console.error('Mensagem:', error.message, 'Código:', error.code, 'Detalhes:', error.details, 'Hint:', error.hint);
@@ -354,7 +379,7 @@ export async function getStudentsFromSupabase(): Promise<{ data: Student[] | nul
 
     // Reconstruir o formato Student[]
     const students: Student[] = studentRows.map((row) => ({
-      id: row.id,
+      id: row.local_id || row.id,
       name: row.name,
       email: row.email,
       phone: row.phone || undefined,
