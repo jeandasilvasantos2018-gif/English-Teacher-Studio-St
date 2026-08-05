@@ -212,7 +212,6 @@ export async function syncStudentsToSupabase(students: Student[]): Promise<SyncR
           noteRows.push({
             student_id: realStudentUuid,
             created_at: note.createdAt || new Date().toISOString(),
-            updated_at: note.updatedAt || null,
             category: note.category,
             title: note.title,
             content: note.content,
