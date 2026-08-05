@@ -53,6 +53,8 @@ export interface ClassSessionLog {
   attended: boolean;
 }
 
+export type ClassLog = ClassSessionLog;
+
 export interface Student {
   id: string;
   name: string;
@@ -87,4 +89,56 @@ export type FilterLevel = 'ALL' | EnglishLevel;
 export type FilterPayment = 'ALL' | 'paid' | 'pending' | 'overdue';
 export type FilterDay = 'ALL' | DayOfWeek;
 
-export type ViewMode = 'grid' | 'table' | 'weekly' | 'payments' | 'availability' | 'backup' | 'supabase_test' | 'login';
+export type ViewMode = 'grid' | 'table' | 'weekly' | 'payments' | 'availability' | 'backup' | 'supabase_test' | 'login' | 'calendar';
+
+export type CalendarEventType = 'class' | 'consultation' | 'exam' | 'personal' | 'block' | 'other';
+export type CalendarEventStatus = 'scheduled' | 'completed' | 'cancelled' | 'rescheduled' | 'no_show';
+export type CalendarRecurrenceType = 'none' | 'daily' | 'weekly' | 'biweekly' | 'monthly';
+
+export type NotificationType =
+  | 'class_reminder'
+  | 'class_started'
+  | 'payment_due'
+  | 'payment_overdue'
+  | 'student_inactive'
+  | 'student_without_schedule'
+  | 'birthday'
+  | 'system';
+
+export type NotificationPriority = 'low' | 'normal' | 'high' | 'critical';
+
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  studentId?: string;
+  calendarEventId?: string;
+  priority: NotificationPriority;
+  read: boolean;
+  createdAt: string;
+  scheduledFor?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CalendarEvent {
+  id: string;
+  userId?: string;
+  studentId?: string;
+  title: string;
+  description?: string;
+  startAt: string; // ISO date string
+  endAt: string;   // ISO date string
+  eventType: CalendarEventType;
+  status: CalendarEventStatus;
+  locationUrl?: string;
+  color?: string;
+  allDay?: boolean;
+  recurrenceType?: CalendarRecurrenceType;
+  recurrenceInterval?: number;
+  recurrenceEndDate?: string;
+  reminderMinutes?: number;
+  sourceScheduleId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}

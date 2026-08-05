@@ -1,5 +1,6 @@
 import React from 'react';
-import { ViewMode } from '../types';
+import { ViewMode, Student } from '../types';
+import { NotificationCenter } from './NotificationCenter';
 import { 
   GraduationCap, 
   Users, 
@@ -27,6 +28,8 @@ interface HeaderProps {
   onExportData: () => void;
   onImportData: (e: React.ChangeEvent<HTMLInputElement>) => void;
   studentCount: number;
+  students?: Student[];
+  onSelectStudent?: (studentId: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -39,6 +42,8 @@ export const Header: React.FC<HeaderProps> = ({
   onExportData,
   onImportData,
   studentCount,
+  students,
+  onSelectStudent,
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -70,6 +75,12 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Mobile View Switches */}
             <div className="flex items-center gap-1.5 lg:hidden">
+              <NotificationCenter
+                students={students}
+                onSelectStudent={onSelectStudent}
+                onNavigateToCalendar={() => setViewMode('calendar')}
+                onNavigateToPayments={() => setViewMode('payments')}
+              />
               <button
                 onClick={onOpenAddStudent}
                 className="h-9 px-3 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 transition flex items-center gap-1"
@@ -105,6 +116,18 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <CalendarDays className="w-4 h-4 shrink-0" />
               <span>Grade Semanal</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('calendar')}
+              className={`flex items-center gap-2 px-3.5 h-8 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                viewMode === 'calendar'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <CalendarDays className="w-4 h-4 shrink-0 text-indigo-500" />
+              <span>Calendar</span>
             </button>
 
             <button
@@ -177,7 +200,13 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Top Actions */}
           <div className="hidden lg:flex items-center gap-2 shrink-0">
-            
+            <NotificationCenter
+              students={students}
+              onSelectStudent={onSelectStudent}
+              onNavigateToCalendar={() => setViewMode('calendar')}
+              onNavigateToPayments={() => setViewMode('payments')}
+            />
+
             <button
               onClick={onOpenAiPlanner}
               className="h-9 px-3 text-xs font-semibold whitespace-nowrap text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/80 rounded-xl border border-purple-200/80 dark:border-purple-800 transition flex items-center gap-1.5"

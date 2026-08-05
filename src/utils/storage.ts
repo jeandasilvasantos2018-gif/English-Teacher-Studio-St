@@ -269,3 +269,51 @@ export function deleteNote(students: Student[], studentId: string, noteId: strin
   return updated;
 }
 
+export function updateClassLogForStudent(
+  students: Student[],
+  studentId: string,
+  classLogId: string,
+  updates: Partial<ClassSessionLog>
+): Student[] {
+  const updated = students.map((std) => {
+    if (std.id !== studentId) return std;
+
+    const updatedLogs = std.classLogs.map((log) => {
+      if (log.id !== classLogId) return log;
+      return {
+        ...log,
+        ...updates,
+        id: log.id, // preserve original id
+      };
+    });
+
+    return {
+      ...std,
+      classLogs: updatedLogs,
+    };
+  });
+
+  saveStudents(updated);
+  return updated;
+}
+
+export function deleteClassLogForStudent(
+  students: Student[],
+  studentId: string,
+  classLogId: string
+): Student[] {
+  const updated = students.map((std) => {
+    if (std.id !== studentId) return std;
+
+    const updatedLogs = std.classLogs.filter((log) => log.id !== classLogId);
+
+    return {
+      ...std,
+      classLogs: updatedLogs,
+    };
+  });
+
+  saveStudents(updated);
+  return updated;
+}
+

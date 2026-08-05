@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Student, ClassScheduleSlot, EnglishLevel, DayOfWeek, PaymentStatus } from '../types';
+import { Student, ClassScheduleSlot, EnglishLevel, DayOfWeek, PaymentStatus, ClassSessionLog } from '../types';
+import { updateClassLogForStudent, deleteClassLogForStudent, loadStudents } from '../utils/storage';
 import { StudentAvatar } from './StudentAvatar';
 import { 
   CEFR_LEVELS, 
@@ -103,6 +104,135 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
 
   // Local state for deletion confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Local state for Class Log Edit & Delete
+  const [editingClassLog, setEditingClassLog] = useState<ClassSessionLog | null>(null);
+  const [editClassNumber, setEditClassNumber] = useState<number>(1);
+  const [editDate, setEditDate] = useState<string>('');
+  const [editDurationMinutes, setEditDurationMinutes] = useState<number>(60);
+  const [editTopic, setEditTopic] = useState<string>('');
+  const [editGrammarFocus, setEditGrammarFocus] = useState<string>('');
+  const [editNotes, setEditNotes] = useState<string>('');
+  const [editHomeworkAssigned, setEditHomeworkAssigned] = useState<string>('');
+  const [editAttended, setEditAttended] = useState<boolean>(true);
+  const [isSubmittingLogEdit, setIsSubmittingLogEdit] = useState(false);
+  const [logEditError, setLogEditError] = useState<string | null>(null);
+
+  const [deletingClassLog, setDeletingClassLog] = useState<ClassSessionLog | null>(null);
+  const [isSubmittingLogDelete, setIsSubmittingLogDelete] = useState(false);
+  const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
+
+  const handleStartEditClassLog = (log: ClassSessionLog) => {
+    setEditingClassLog(log);
+    setEditClassNumber(log.classNumber);
+
+    let formattedDate = '';
+    if (log.date) {
+      const d = new Date(log.date);
+      if (!isNaN(d.getTime())) {
+        formattedDate = d.toISOString().split('T')[0];
+      }
+    }
+    if (!formattedDate) {
+      formattedDate = new Date().toISOString().split('T')[0];
+    }
+
+    setEditDate(formattedDate);
+    setEditDurationMinutes(log.durationMinutes || 60);
+    setEditTopic(log.topic || '');
+    setEditGrammarFocus(log.grammarFocus || '');
+    setEditNotes(log.notes || '');
+    setEditHomeworkAssigned(log.homeworkAssigned || '');
+    setEditAttended(log.attended ?? true);
+    setLogEditError(null);
+  };
+
+  const handleCancelEditClassLog = () => {
+    setEditingClassLog(null);
+    setLogEditError(null);
+  };
+
+  const handleSaveClassLogEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingClassLog) return;
+
+    if (!editTopic.trim()) {
+      setLogEditError('Topic Covered cannot be empty.');
+      return;
+    }
+
+    if (!editClassNumber || editClassNumber <= 0) {
+      setLogEditError('Class Number must be a positive number.');
+      return;
+    }
+
+    if (!editDurationMinutes || editDurationMinutes <= 0) {
+      setLogEditError('Duration must be greater than zero.');
+      return;
+    }
+
+    if (!editDate) {
+      setLogEditError('Please select a valid date.');
+      return;
+    }
+
+    setIsSubmittingLogEdit(true);
+
+    try {
+      const currentStudents = loadStudents();
+      const isoDate = new Date(`${editDate}T12:00:00`).toISOString();
+
+      const updatedStudents = updateClassLogForStudent(currentStudents, student.id, editingClassLog.id, {
+        classNumber: editClassNumber,
+        date: isoDate,
+        durationMinutes: editDurationMinutes,
+        topic: editTopic.trim(),
+        grammarFocus: editGrammarFocus.trim() || undefined,
+        notes: editNotes.trim() || undefined,
+        homeworkAssigned: editHomeworkAssigned.trim() || undefined,
+        attended: editAttended,
+      });
+
+      const updatedTarget = updatedStudents.find((s) => s.id === student.id);
+      if (updatedTarget) {
+        onUpdateStudent(updatedTarget);
+      }
+
+      setEditingClassLog(null);
+      setActionSuccessMessage(`Class #${editClassNumber} updated successfully!`);
+      setTimeout(() => setActionSuccessMessage(null), 4000);
+    } catch (err) {
+      console.error('Error updating class log:', err);
+      setLogEditError('Error saving changes. Please try again.');
+    } finally {
+      setIsSubmittingLogEdit(false);
+    }
+  };
+
+  const handleConfirmDeleteClassLog = () => {
+    if (!deletingClassLog) return;
+
+    setIsSubmittingLogDelete(true);
+
+    try {
+      const currentStudents = loadStudents();
+      const updatedStudents = deleteClassLogForStudent(currentStudents, student.id, deletingClassLog.id);
+
+      const updatedTarget = updatedStudents.find((s) => s.id === student.id);
+      if (updatedTarget) {
+        onUpdateStudent(updatedTarget);
+      }
+
+      const logNum = deletingClassLog.classNumber;
+      setDeletingClassLog(null);
+      setActionSuccessMessage(`Class #${logNum} log removed successfully!`);
+      setTimeout(() => setActionSuccessMessage(null), 4000);
+    } catch (err) {
+      console.error('Error deleting class log:', err);
+    } finally {
+      setIsSubmittingLogDelete(false);
+    }
+  };
 
   const levelInfo = CEFR_LEVELS[student.englishLevel] || CEFR_LEVELS.B1;
   const paymentInfo = getCurrentMonthPaymentStatus(student);
@@ -905,9 +1035,24 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
 
               {/* Historical Class Session Logs */}
               <div className="space-y-3">
-                <h4 className="font-bold text-xs text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                  <BookOpen className="w-4 h-4 text-indigo-500" /> Previous Class Sessions
-                </h4>
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-xs text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                    <BookOpen className="w-4 h-4 text-indigo-500" /> Previous Class Sessions
+                  </h4>
+                </div>
+
+                {/* Action Success Banner */}
+                {actionSuccessMessage && (
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 rounded-xl border border-emerald-200 dark:border-emerald-900 text-xs font-semibold flex items-center justify-between animate-fadeIn">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>{actionSuccessMessage}</span>
+                    </div>
+                    <button onClick={() => setActionSuccessMessage(null)} className="text-emerald-600 hover:text-emerald-800 text-xs">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
 
                 {student.classLogs.length === 0 ? (
                   <div className="p-8 text-center text-slate-400 text-xs bg-slate-50 dark:bg-slate-800/20 rounded-xl border border-slate-200 dark:border-slate-800">
@@ -920,17 +1065,53 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                       className="bg-white dark:bg-slate-800/60 p-4 rounded-xl border border-slate-200/80 dark:border-slate-700 space-y-2 text-xs"
                     >
                       <div className="flex items-center justify-between font-bold">
-                        <span className="text-indigo-600 dark:text-indigo-400 font-black text-sm">
-                          Class #{log.classNumber}
-                        </span>
-                        <span className="text-slate-400 font-medium">
-                          {new Date(log.date).toLocaleDateString('en-US', {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                          })}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-indigo-600 dark:text-indigo-400 font-black text-sm">
+                            Class #{log.classNumber}
+                          </span>
+                          {log.durationMinutes && (
+                            <span className="text-[10px] font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-md border border-indigo-200/50 dark:border-indigo-800/50">
+                              {log.durationMinutes} min
+                            </span>
+                          )}
+                          {!log.attended && (
+                            <span className="text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 px-2 py-0.5 rounded-md">
+                              Absence
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-400 font-medium text-[11px]">
+                            {new Date(log.date).toLocaleDateString('en-US', {
+                              weekday: 'short',
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                            })}
+                          </span>
+
+                          <div className="flex items-center gap-1 ml-1">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditClassLog(log)}
+                              className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-lg transition"
+                              title={`Edit class log #${log.classNumber}`}
+                              aria-label={`Edit class log #${log.classNumber}`}
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingClassLog(log)}
+                              className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition"
+                              title={`Delete class log #${log.classNumber}`}
+                              aria-label={`Delete class log #${log.classNumber}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
                       </div>
 
                       {log.topic && (
@@ -1239,6 +1420,215 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
         </div>
 
       </div>
+
+      {/* Edit Class Log Modal */}
+      {editingClassLog && (
+        <div 
+          className="fixed inset-0 z-[110] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') handleCancelEditClassLog();
+          }}
+        >
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-4 sm:p-5 bg-indigo-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-5 h-5" />
+                <h3 className="font-bold text-base">Edit Class Log #{editingClassLog.classNumber}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelEditClassLog}
+                className="p-1 rounded-lg hover:bg-white/20 transition text-white"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveClassLogEdit} className="p-5 overflow-y-auto space-y-4 text-xs">
+              {logEditError && (
+                <div className="p-3 bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200 rounded-xl border border-rose-200 dark:border-rose-900 font-semibold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{logEditError}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Class Number *
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={editClassNumber}
+                    onChange={(e) => setEditClassNumber(parseInt(e.target.value, 10) || 1)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-bold focus:ring-2 focus:ring-indigo-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-bold focus:ring-2 focus:ring-indigo-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Duration (minutes) *
+                  </label>
+                  <input
+                    type="number"
+                    min={15}
+                    step={5}
+                    value={editDurationMinutes}
+                    onChange={(e) => setEditDurationMinutes(parseInt(e.target.value, 10) || 60)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-bold focus:ring-2 focus:ring-indigo-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Attendance
+                  </label>
+                  <select
+                    value={editAttended ? 'true' : 'false'}
+                    onChange={(e) => setEditAttended(e.target.value === 'true')}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-bold focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="true">Attended</option>
+                    <option value="false">Absent / Missed</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Topic Covered *
+                </label>
+                <input
+                  type="text"
+                  value={editTopic}
+                  onChange={(e) => setEditTopic(e.target.value)}
+                  placeholder="e.g. Present Perfect vs Past Simple"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-bold focus:ring-2 focus:ring-indigo-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Grammar Focus
+                </label>
+                <input
+                  type="text"
+                  value={editGrammarFocus}
+                  onChange={(e) => setEditGrammarFocus(e.target.value)}
+                  placeholder="e.g. Irregular verbs, Since / For"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-medium focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Homework Assigned
+                </label>
+                <input
+                  type="text"
+                  value={editHomeworkAssigned}
+                  onChange={(e) => setEditHomeworkAssigned(e.target.value)}
+                  placeholder="e.g. Read article on page 42"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-medium focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Class Notes / Feedback
+                </label>
+                <textarea
+                  rows={3}
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="Additional notes about student performance..."
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-medium focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={handleCancelEditClassLog}
+                  className="px-4 py-2.5 bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-bold rounded-xl hover:bg-slate-300 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingLogEdit}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition flex items-center gap-1.5 shadow-md disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{isSubmittingLogEdit ? 'Saving...' : 'Save Changes'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Class Log Confirmation Modal */}
+      {deletingClassLog && (
+        <div 
+          className="fixed inset-0 z-[110] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setDeletingClassLog(null);
+          }}
+        >
+          <div className="bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900 rounded-2xl max-w-md w-full shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="p-3 bg-rose-100 dark:bg-rose-950/60 rounded-xl">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-slate-900 dark:text-white">Delete this class log?</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Class #{deletingClassLog.classNumber}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              This action cannot be undone. The selected class record will be permanently removed.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingClassLog(null)}
+                className="px-4 py-2.5 bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-bold rounded-xl hover:bg-slate-300 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingLogDelete}
+                onClick={handleConfirmDeleteClassLog}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition shadow-md disabled:opacity-50"
+              >
+                {isSubmittingLogDelete ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

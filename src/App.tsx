@@ -21,6 +21,7 @@ import { WhatsAppModal } from './components/WhatsAppModal';
 import { StudentReportModal } from './components/StudentReportModal';
 import { BackupRestoreView } from './components/BackupRestoreView';
 import { SupabaseTest } from './components/SupabaseTest';
+import { CalendarView } from './components/CalendarView';
 import { Login } from './pages/Login';
 import { exportBackupJSON, importBackupJSON } from './utils/backup';
 import { Check, Info } from 'lucide-react';
@@ -216,6 +217,11 @@ export default function App() {
         onExportData={handleExportData}
         onImportData={handleImportData}
         studentCount={students.filter((s) => s.active).length}
+        students={students}
+        onSelectStudent={(studentId) => {
+          const found = students.find((s) => s.id === studentId);
+          if (found) setSelectedStudent(found);
+        }}
       />
 
       {/* Main App Container */}
@@ -258,6 +264,11 @@ export default function App() {
               setIsAddStudentOpen(true);
             }}
             onOpenAvailability={() => setViewMode('availability')}
+          />
+        ) : viewMode === 'calendar' ? (
+          <CalendarView
+            students={students}
+            onSelectStudent={(std) => setSelectedStudent(std)}
           />
         ) : viewMode === 'availability' ? (
           <AvailabilityView
