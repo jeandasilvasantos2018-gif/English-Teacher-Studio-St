@@ -64,11 +64,24 @@ export async function syncStudentsToSupabase(students: Student[]): Promise<SyncR
       .upsert(studentRows, { onConflict: 'id' });
 
     if (studentUpsertError) {
-      console.error('Erro ao salvar alunos no Supabase:', studentUpsertError);
+      console.error('=== ERRO SUPABASE AO SALVAR ALUNOS ===');
+      console.error('Mensagem:', studentUpsertError.message);
+      console.error('Código:', studentUpsertError.code);
+      console.error('Detalhes:', studentUpsertError.details);
+      console.error('Hint:', studentUpsertError.hint);
+      console.error('Objeto completo do erro:', studentUpsertError);
+
+      const fullErrorDetails = [
+        `Mensagem: ${studentUpsertError.message}`,
+        `Código: ${studentUpsertError.code || 'N/A'}`,
+        studentUpsertError.details ? `Detalhes: ${studentUpsertError.details}` : null,
+        studentUpsertError.hint ? `Hint: ${studentUpsertError.hint}` : null,
+      ].filter(Boolean).join(' | ');
+
       return {
         success: false,
-        message: 'Erro ao salvar os alunos no banco de dados.',
-        error: studentUpsertError.message,
+        message: `Erro ao salvar alunos no Supabase: ${studentUpsertError.message}`,
+        error: fullErrorDetails,
       };
     }
 
@@ -139,22 +152,34 @@ export async function syncStudentsToSupabase(students: Student[]): Promise<SyncR
     // Upsert nas sub-tabelas (se houver dados)
     if (allSchedules.length > 0) {
       const { error } = await supabase.from('student_schedules').upsert(allSchedules, { onConflict: 'id' });
-      if (error) console.warn('Aviso ao sincronizar student_schedules:', error.message);
+      if (error) {
+        console.error('=== ERRO SUPABASE AO SALVAR STUDENT_SCHEDULES ===');
+        console.error('Mensagem:', error.message, 'Código:', error.code, 'Detalhes:', error.details, 'Hint:', error.hint);
+      }
     }
 
     if (allClassLogs.length > 0) {
       const { error } = await supabase.from('class_logs').upsert(allClassLogs, { onConflict: 'id' });
-      if (error) console.warn('Aviso ao sincronizar class_logs:', error.message);
+      if (error) {
+        console.error('=== ERRO SUPABASE AO SALVAR CLASS_LOGS ===');
+        console.error('Mensagem:', error.message, 'Código:', error.code, 'Detalhes:', error.details, 'Hint:', error.hint);
+      }
     }
 
     if (allPaymentHistory.length > 0) {
       const { error } = await supabase.from('payment_history').upsert(allPaymentHistory, { onConflict: 'id' });
-      if (error) console.warn('Aviso ao sincronizar payment_history:', error.message);
+      if (error) {
+        console.error('=== ERRO SUPABASE AO SALVAR PAYMENT_HISTORY ===');
+        console.error('Mensagem:', error.message, 'Código:', error.code, 'Detalhes:', error.details, 'Hint:', error.hint);
+      }
     }
 
     if (allNotes.length > 0) {
       const { error } = await supabase.from('student_notes').upsert(allNotes, { onConflict: 'id' });
-      if (error) console.warn('Aviso ao sincronizar student_notes:', error.message);
+      if (error) {
+        console.error('=== ERRO SUPABASE AO SALVAR STUDENT_NOTES ===');
+        console.error('Mensagem:', error.message, 'Código:', error.code, 'Detalhes:', error.details, 'Hint:', error.hint);
+      }
     }
 
     return {
