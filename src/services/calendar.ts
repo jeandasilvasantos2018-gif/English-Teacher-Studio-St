@@ -31,6 +31,7 @@ export interface CalendarEventRow {
   source_schedule_id?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  students?: { id?: string; local_id?: string } | { id?: string; local_id?: string }[] | null;
 }
 
 /**
@@ -101,6 +102,48 @@ export function isValidUuid(value: unknown): boolean {
   if (typeof value !== 'string') return false;
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   return uuidRegex.test(value);
+}
+
+/**
+ * Resolve o ID local do aluno (ex: std-...) para o UUID correspondente em public.students.
+ * Se studentId já for um UUID válido, retorna-o diretamente.
+ * Se for nulo ou vazio, retorna null.
+ * Se for um ID local e não existir no Supabase, retorna null.
+ */
+export async function resolveStudentRemoteId(
+  studentId: string | null | undefined,
+  userId: string
+): Promise<string | null> {
+  if (!studentId || studentId.trim() === '') {
+    return null;
+  }
+
+  if (isValidUuid(studentId)) {
+    return studentId;
+  }
+
+  try {
+    const { data: studentRow, error } = await supabase
+      .from('students')
+      .select('id, local_id')
+      .eq('user_id', userId)
+      .eq('local_id', studentId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[Calendar Service] Error resolving student remote ID:', error);
+      return null;
+    }
+
+    if (studentRow && studentRow.id && isValidUuid(studentRow.id)) {
+      return studentRow.id;
+    }
+
+    return null;
+  } catch (err) {
+    console.error('[Calendar Service] Exception resolving student remote ID:', err);
+    return null;
+  }
 }
 
 /**
@@ -196,7 +239,8 @@ function removeLocalCacheItem(id: string): void {
 
 /**
  * Converte um registro do banco (snake_case) em objeto CalendarEvent (camelCase).
- * Preserva o ID textual no campo `id` e o UUID do Supabase em `remoteId`.
+ * Preserva o ID textual do evento em `id` e o UUID em `remoteId`.
+ * Restaura o ID local do aluno de `row.students.local_id` para `studentId`.
  */
 export function mapRowToEvent(row: CalendarEventRow): CalendarEvent {
   const localId =
@@ -205,11 +249,22 @@ export function mapRowToEvent(row: CalendarEventRow): CalendarEvent {
       : row.id || `evt_${Date.now()}`;
   const remoteUuid = isValidUuid(row.id) ? row.id : undefined;
 
+  let studentLocalId: string | undefined = undefined;
+  if (row.students) {
+    const s = Array.isArray(row.students) ? row.students[0] : row.students;
+    if (s && s.local_id && s.local_id.trim() !== '') {
+      studentLocalId = s.local_id;
+    }
+  }
+  if (!studentLocalId && row.student_id) {
+    studentLocalId = row.student_id;
+  }
+
   return {
     id: localId,
     remoteId: remoteUuid,
     userId: row.user_id || undefined,
-    studentId: row.student_id || undefined,
+    studentId: studentLocalId || undefined,
     title: row.title || 'Untitled Event',
     description: row.description || undefined,
     startAt: row.start_at,
@@ -239,16 +294,17 @@ export function mapRowToEvent(row: CalendarEventRow): CalendarEvent {
 
 /**
  * Mapeia um CalendarEvent para o payload enviado ao Supabase.
- * NUNCA INCLUI 'id' OU 'remoteId' NO RETORNO.
+ * Recebe o resolvedStudentId (UUID ou null) e NUNCA inclui 'id' ou 'remoteId' no retorno.
  */
 export function mapEventToRow(
   event: Partial<CalendarEvent>,
-  userId: string
+  userId: string,
+  resolvedStudentId: string | null = null
 ): CalendarEventPayload {
   return {
     user_id: userId,
     local_id: event.id || '',
-    student_id: event.studentId || null,
+    student_id: resolvedStudentId,
     title: event.title || 'Untitled Event',
     description: event.description || null,
     start_at: event.startAt || new Date().toISOString(),
@@ -271,14 +327,17 @@ export function mapEventToRow(
  */
 export function mapEventToPartialRow(
   event: Partial<CalendarEvent>,
-  userId: string
+  userId: string,
+  resolvedStudentId: string | null = null
 ): Partial<CalendarEventPayload> {
   const payload: Partial<CalendarEventPayload> = {
     user_id: userId,
   };
 
   if (event.id !== undefined) payload.local_id = event.id;
-  if (event.studentId !== undefined) payload.student_id = event.studentId || null;
+  if (resolvedStudentId !== undefined || event.studentId !== undefined) {
+    payload.student_id = resolvedStudentId;
+  }
   if (event.title !== undefined) payload.title = event.title;
   if (event.description !== undefined) payload.description = event.description || null;
   if (event.startAt !== undefined) payload.start_at = event.startAt;
@@ -404,7 +463,16 @@ export async function syncPendingCalendarEvents(): Promise<CalendarServiceResult
 
     for (let i = 0; i < updatedCache.length; i++) {
       const event = updatedCache[i];
-      const payload = mapEventToRow(event, user.id);
+      const resolvedStudentId = await resolveStudentRemoteId(event.studentId, user.id);
+
+      if (event.studentId && !resolvedStudentId) {
+        console.warn(
+          `[Calendar Sync] Skipping sync for event ${event.id}: student '${event.studentId}' not found in Supabase.`
+        );
+        continue;
+      }
+
+      const payload = mapEventToRow(event, user.id, resolvedStudentId);
       payload.local_id = event.id;
       payload.user_id = user.id;
 
@@ -414,7 +482,7 @@ export async function syncPendingCalendarEvents(): Promise<CalendarServiceResult
       const { data, error } = await supabase
         .from('calendar_events')
         .upsert([payload], { onConflict: 'user_id,local_id' })
-        .select('*')
+        .select('*, students(id, local_id)')
         .maybeSingle();
 
       if (!error && data) {
@@ -486,12 +554,17 @@ export async function getCalendarEvents(filters?: {
 
     let query = supabase
       .from('calendar_events')
-      .select('*')
+      .select('*, students(id, local_id)')
       .eq('user_id', user.id)
       .order('start_at', { ascending: true });
 
     if (filters?.studentId) {
-      query = query.eq('student_id', filters.studentId);
+      const resolvedStudentId = await resolveStudentRemoteId(filters.studentId, user.id);
+      if (resolvedStudentId) {
+        query = query.eq('student_id', resolvedStudentId);
+      } else {
+        query = query.eq('student_id', '00000000-0000-0000-0000-000000000000');
+      }
     }
     if (filters?.eventType) {
       query = query.eq('event_type', filters.eventType);
@@ -555,7 +628,7 @@ export async function getCalendarEvent(
       return createResult(true, found, 'Unauthenticated user. Checked local cache.');
     }
 
-    let query = supabase.from('calendar_events').select('*').eq('user_id', user.id);
+    let query = supabase.from('calendar_events').select('*, students(id, local_id)').eq('user_id', user.id);
     if (isValidUuid(id)) {
       query = query.eq('id', id);
     } else {
@@ -642,8 +715,17 @@ export async function createCalendarEvent(
 
     newEvent.userId = user.id;
 
-    // Converte para formato do banco garantindo estritamente que 'id' NUNCA é enviado
-    const payload = mapEventToRow(newEvent, user.id);
+    const resolvedStudentId = await resolveStudentRemoteId(newEvent.studentId, user.id);
+
+    if (newEvent.studentId && !resolvedStudentId) {
+      return createResult(
+        false,
+        newEvent,
+        `Saved locally, but student '${newEvent.studentId}' was not found in Supabase.`
+      );
+    }
+
+    const payload = mapEventToRow(newEvent, user.id, resolvedStudentId);
     payload.local_id = generatedId;
     payload.user_id = user.id;
 
@@ -653,7 +735,7 @@ export async function createCalendarEvent(
     const { data, error } = await supabase
       .from('calendar_events')
       .upsert([payload], { onConflict: 'user_id,local_id' })
-      .select('*')
+      .select('*, students(id, local_id)')
       .single();
 
     if (error) {
@@ -754,24 +836,35 @@ export async function updateCalendarEvent(
       );
     }
 
-    const payload = mapEventToPartialRow(updates, user.id);
-    payload.local_id = id;
-    payload.user_id = user.id;
+    const targetStudentId = updates.studentId !== undefined ? updates.studentId : updatedEvent.studentId;
+    const resolvedStudentId = await resolveStudentRemoteId(targetStudentId, user.id);
 
-    console.log('[calendar sync payload]', JSON.stringify(payload, null, 2));
-    assertNoIdInPayload(payload);
+    if (targetStudentId && !resolvedStudentId) {
+      return createResult(
+        false,
+        updatedEvent,
+        `Updated locally, but student '${targetStudentId}' was not found in Supabase.`
+      );
+    }
 
     let query;
     if (updatedEvent.remoteId && isValidUuid(updatedEvent.remoteId)) {
+      const payload = mapEventToPartialRow(updates, user.id, resolvedStudentId);
+      payload.local_id = id;
+      payload.user_id = user.id;
+
+      console.log('[calendar sync payload]', JSON.stringify(payload, null, 2));
+      assertNoIdInPayload(payload);
+
       query = supabase
         .from('calendar_events')
         .update(payload)
         .eq('id', updatedEvent.remoteId)
         .eq('user_id', user.id)
-        .select('*')
+        .select('*, students(id, local_id)')
         .maybeSingle();
     } else {
-      const fullPayload = mapEventToRow(updatedEvent, user.id);
+      const fullPayload = mapEventToRow(updatedEvent, user.id, resolvedStudentId);
       fullPayload.local_id = id;
       fullPayload.user_id = user.id;
 
@@ -781,7 +874,7 @@ export async function updateCalendarEvent(
       query = supabase
         .from('calendar_events')
         .upsert([fullPayload], { onConflict: 'user_id,local_id' })
-        .select('*')
+        .select('*, students(id, local_id)')
         .maybeSingle();
     }
 
@@ -998,14 +1091,19 @@ export async function getEventsBetweenDates(
 
     let query = supabase
       .from('calendar_events')
-      .select('*')
+      .select('*, students(id, local_id)')
       .eq('user_id', user.id)
       .gte('start_at', startIso)
       .lte('start_at', endIso)
       .order('start_at', { ascending: true });
 
     if (studentId) {
-      query = query.eq('student_id', studentId);
+      const resolvedStudentId = await resolveStudentRemoteId(studentId, user.id);
+      if (resolvedStudentId) {
+        query = query.eq('student_id', resolvedStudentId);
+      } else {
+        query = query.eq('student_id', '00000000-0000-0000-0000-000000000000');
+      }
     }
 
     const { data, error } = await query;
@@ -1079,14 +1177,19 @@ export async function getUpcomingEvents(
 
     let query = supabase
       .from('calendar_events')
-      .select('*')
+      .select('*, students(id, local_id)')
       .eq('user_id', user.id)
       .gte('start_at', nowIso)
       .order('start_at', { ascending: true })
       .limit(limit);
 
     if (studentId) {
-      query = query.eq('student_id', studentId);
+      const resolvedStudentId = await resolveStudentRemoteId(studentId, user.id);
+      if (resolvedStudentId) {
+        query = query.eq('student_id', resolvedStudentId);
+      } else {
+        query = query.eq('student_id', '00000000-0000-0000-0000-000000000000');
+      }
     }
 
     const { data, error } = await query;
