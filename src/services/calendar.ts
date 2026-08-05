@@ -27,7 +27,7 @@ export interface CalendarEventRow {
   recurrence_type?: string | null;
   recurrence_interval?: number | null;
   recurrence_end_date?: string | null;
-  reminder_minutes?: number | null;
+  reminder_minutes?: number[] | number | null;
   source_schedule_id?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -52,9 +52,9 @@ export interface CalendarEventPayload {
   color: string | null;
   all_day: boolean;
   recurrence_type: string;
-  recurrence_interval: number | null;
+  recurrence_interval: number;
   recurrence_end_date: string | null;
-  reminder_minutes: number | null;
+  reminder_minutes: number[];
   source_schedule_id: string | null;
 }
 
@@ -94,6 +94,35 @@ const ALLOWED_RECURRENCE_TYPES: CalendarRecurrenceType[] = [
   'biweekly',
   'monthly',
 ];
+
+/**
+ * Normaliza valores de reminderMinutes (number | number[] | null | undefined)
+ * retornando um array de números inteiros >= 0 sem duplicados.
+ */
+export function normalizeReminderMinutes(
+  value: number | number[] | null | undefined
+): number[] {
+  if (value === null || value === undefined) {
+    return [];
+  }
+
+  if (typeof value === 'number') {
+    if (Number.isFinite(value) && value >= 0 && Number.isInteger(value)) {
+      return [value];
+    }
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    const validNumbers = value.filter(
+      (v): v is number =>
+        typeof v === 'number' && Number.isFinite(v) && v >= 0 && Number.isInteger(v)
+    );
+    return Array.from(new Set(validNumbers));
+  }
+
+  return [];
+}
 
 /**
  * Valida se um valor é um UUID v4/v1 válido.
@@ -283,9 +312,9 @@ export function mapRowToEvent(row: CalendarEventRow): CalendarEvent {
     )
       ? row.recurrence_type
       : 'none') as CalendarRecurrenceType,
-    recurrenceInterval: row.recurrence_interval || undefined,
+    recurrenceInterval: row.recurrence_interval ?? 1,
     recurrenceEndDate: row.recurrence_end_date || undefined,
-    reminderMinutes: row.reminder_minutes || undefined,
+    reminderMinutes: normalizeReminderMinutes(row.reminder_minutes),
     sourceScheduleId: row.source_schedule_id || undefined,
     createdAt: row.created_at || undefined,
     updatedAt: row.updated_at || undefined,
@@ -315,9 +344,9 @@ export function mapEventToRow(
     color: event.color || null,
     all_day: event.allDay ?? false,
     recurrence_type: event.recurrenceType || 'none',
-    recurrence_interval: event.recurrenceInterval || null,
+    recurrence_interval: event.recurrenceInterval ?? 1,
     recurrence_end_date: event.recurrenceEndDate || null,
-    reminder_minutes: event.reminderMinutes || null,
+    reminder_minutes: normalizeReminderMinutes(event.reminderMinutes),
     source_schedule_id: event.sourceScheduleId || null,
   };
 }
@@ -350,11 +379,11 @@ export function mapEventToPartialRow(
   if (event.recurrenceType !== undefined)
     payload.recurrence_type = event.recurrenceType || 'none';
   if (event.recurrenceInterval !== undefined)
-    payload.recurrence_interval = event.recurrenceInterval || null;
+    payload.recurrence_interval = event.recurrenceInterval ?? 1;
   if (event.recurrenceEndDate !== undefined)
     payload.recurrence_end_date = event.recurrenceEndDate || null;
   if (event.reminderMinutes !== undefined)
-    payload.reminder_minutes = event.reminderMinutes || null;
+    payload.reminder_minutes = normalizeReminderMinutes(event.reminderMinutes);
   if (event.sourceScheduleId !== undefined)
     payload.source_schedule_id = event.sourceScheduleId || null;
 

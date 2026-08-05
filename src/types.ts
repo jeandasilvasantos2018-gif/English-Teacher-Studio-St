@@ -138,7 +138,7 @@ export interface CalendarEvent {
   recurrenceType?: CalendarRecurrenceType;
   recurrenceInterval?: number;
   recurrenceEndDate?: string;
-  reminderMinutes?: number;
+  reminderMinutes?: number[];
   sourceScheduleId?: string;
   createdAt?: string;
   updatedAt?: string;

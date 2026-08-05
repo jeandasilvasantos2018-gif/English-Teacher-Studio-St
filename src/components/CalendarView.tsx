@@ -1117,7 +1117,15 @@ const CalendarEventFormModal: React.FC<CalendarEventFormModalProps> = ({
   const [recurrenceInterval, setRecurrenceInterval] = useState<number>(eventToEdit?.recurrenceInterval || 1);
   const [recurrenceEndDate, setRecurrenceEndDate] = useState<string>(eventToEdit?.recurrenceEndDate || '');
   
-  const [reminderMinutes, setReminderMinutes] = useState<number>(eventToEdit?.reminderMinutes || 15);
+  const [reminderMinutes, setReminderMinutes] = useState<number>(() => {
+    if (eventToEdit?.reminderMinutes && Array.isArray(eventToEdit.reminderMinutes)) {
+      return eventToEdit.reminderMinutes[0] ?? 15;
+    }
+    if (typeof (eventToEdit?.reminderMinutes as any) === 'number') {
+      return eventToEdit.reminderMinutes as unknown as number;
+    }
+    return 15;
+  });
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
@@ -1186,7 +1194,7 @@ const CalendarEventFormModal: React.FC<CalendarEventFormModalProps> = ({
         recurrenceType,
         recurrenceInterval: recurrenceType !== 'none' ? recurrenceInterval : undefined,
         recurrenceEndDate: recurrenceType !== 'none' && recurrenceEndDate ? recurrenceEndDate : undefined,
-        reminderMinutes,
+        reminderMinutes: [reminderMinutes],
       };
 
       let res;
@@ -1632,10 +1640,12 @@ const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
             </div>
           )}
 
-          {event.reminderMinutes && (
+          {event.reminderMinutes && (Array.isArray(event.reminderMinutes) ? event.reminderMinutes.length > 0 : true) && (
             <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
               <Bell className="w-4 h-4 text-amber-500 shrink-0" />
-              <span>Reminder set for {event.reminderMinutes} minutes prior</span>
+              <span>
+                Reminder set for {Array.isArray(event.reminderMinutes) ? event.reminderMinutes.join(', ') : event.reminderMinutes} minutes prior
+              </span>
             </div>
           )}
 
