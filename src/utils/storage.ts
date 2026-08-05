@@ -1,33 +1,134 @@
 import { Student, ClassSessionLog, MonthlyPaymentRecord, StudentNote, PaymentStatus } from '../types';
 import { INITIAL_STUDENTS } from '../data/initialData';
-import { getCurrentMonthYearKey } from './helpers';
+import { migrateLocalStorageToSupabase, getStudentsFromSupabase } from '../services/sync';
+import { isSupabaseConfigured } from '../lib/supabase';
 
 const STORAGE_KEY = 'english_teacher_students_v6';
 
+// Estados e Controle da Fila de Sincronização / Debounce
+let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let isSyncing = false;
+let syncPending = false;
+
+/**
+ * Executa o upload para o Supabase respeitando o estado da conexão e bloqueios de sincronização
+ */
+function triggerSync(): void {
+  // Se o navegador estiver offline, marca como pendente
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    syncPending = true;
+    return;
+  }
+
+  // Se já houver um upload em andamento, enfileira a próxima execução
+  if (isSyncing) {
+    syncPending = true;
+    return;
+  }
+
+  isSyncing = true;
+  syncPending = false;
+
+  migrateLocalStorageToSupabase()
+    .then((result) => {
+      if (!result.success) {
+        console.error('Aviso/Erro na sincronização em background:', result.error || result.message);
+      }
+    })
+    .catch((err) => {
+      console.error('Falha ao executar sincronização em background:', err);
+    })
+    .finally(() => {
+      isSyncing = false;
+      // Caso novas alterações tenham ocorrido durante a sincronização anterior
+      if (syncPending) {
+        syncPending = false;
+        scheduleSync(500);
+      }
+    });
+}
+
+/**
+ * Agenda a sincronização em background utilizando Debounce de ~2 segundos
+ */
+function scheduleSync(delayMs = 2000): void {
+  if (syncDebounceTimer) {
+    clearTimeout(syncDebounceTimer);
+  }
+  syncDebounceTimer = setTimeout(() => {
+    syncDebounceTimer = null;
+    triggerSync();
+  }, delayMs);
+}
+
+// Ouvinte para detectar quando a conexão for reestabelecida
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    if (syncPending) {
+      scheduleSync(500);
+    }
+  });
+}
+
 export function loadStudents(): Student[] {
+  let localStudents: Student[] = INITIAL_STUDENTS;
+
+  // 1. Ler imediatamente do localStorage
   try {
     const data = localStorage.getItem(STORAGE_KEY);
     if (!data) {
       saveStudents(INITIAL_STUDENTS);
-      return INITIAL_STUDENTS;
+      localStudents = INITIAL_STUDENTS;
+    } else {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        localStudents = parsed;
+      } else {
+        localStudents = INITIAL_STUDENTS;
+      }
     }
-    const parsed = JSON.parse(data);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed;
-    }
-    return INITIAL_STUDENTS;
   } catch (err) {
     console.error('Failed to load students from localStorage:', err);
-    return INITIAL_STUDENTS;
+    localStudents = INITIAL_STUDENTS;
   }
+
+  // 2. Se existir Supabase configurado, busca em background de forma assíncrona
+  if (isSupabaseConfigured && typeof window !== 'undefined' && navigator.onLine) {
+    getStudentsFromSupabase()
+      .then(({ data: remoteStudents, error }) => {
+        if (!error && remoteStudents && Array.isArray(remoteStudents) && remoteStudents.length > 0) {
+          const currentLocalRaw = localStorage.getItem(STORAGE_KEY);
+          const currentLocal = currentLocalRaw ? JSON.parse(currentLocalRaw) : [];
+
+          // Se a quantidade de alunos for diferente ou houver dados válidos, substitui o localStorage
+          if (remoteStudents.length !== currentLocal.length || JSON.stringify(remoteStudents) !== JSON.stringify(currentLocal)) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteStudents));
+            
+            // Dispara evento para atualização automática do estado na aplicação caso haja ouvintes
+            window.dispatchEvent(new CustomEvent('students_updated', { detail: remoteStudents }));
+            window.dispatchEvent(new Event('storage'));
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Erro ao carregar dados do Supabase em background:', err);
+      });
+  }
+
+  // 3. Retorna os dados locais imediatamente para não bloquear a interface
+  return localStudents;
 }
 
 export function saveStudents(students: Student[]): void {
+  // 1. Atualiza o localStorage imediatamente
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(students));
   } catch (err) {
     console.error('Failed to save students to localStorage:', err);
   }
+
+  // 2. Agenda a sincronização com o Supabase em background (Debounce + Queue)
+  scheduleSync(2000);
 }
 
 export function resetToDemoData(): Student[] {
@@ -50,7 +151,6 @@ export function logClassForStudent(
       classNumber: nextClassNum,
     };
 
-    // Also if logData includes notes or homework, optionally append a student note
     const updatedNotes = [...std.notes];
     if (logData.topic || logData.notes) {
       updatedNotes.unshift({
@@ -168,3 +268,4 @@ export function deleteNote(students: Student[], studentId: string, noteId: strin
   saveStudents(updated);
   return updated;
 }
+
