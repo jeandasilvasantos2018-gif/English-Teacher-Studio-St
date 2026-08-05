@@ -123,6 +123,7 @@ export interface Notification {
 
 export interface CalendarEvent {
   id: string;
+  remoteId?: string;
   userId?: string;
   studentId?: string;
   title: string;
