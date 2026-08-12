@@ -100,31 +100,100 @@ export function loadStudents(): Student[] {
           const currentLocalRaw = localStorage.getItem(STORAGE_KEY);
           const currentLocal: Student[] = currentLocalRaw ? JSON.parse(currentLocalRaw) : [];
 
-          // Mesclar dados do Supabase com o localStorage preservando notas locais não sincronizadas
-          const mergedStudents = remoteStudents.map((remote) => {
+          // Mesclar dados do Supabase com o localStorage preservando alterações locais não sincronizadas
+          const mergedRemoteStudents = remoteStudents.map((remote) => {
             const local = currentLocal.find((l) => l.id === remote.id || l.name === remote.name);
             if (!local) return remote;
 
+            // 1. Class Logs Merge
+            const localLogs = local.classLogs || [];
+            const remoteLogs = remote.classLogs || [];
+            const remoteLogIds = new Set(remoteLogs.map((rl) => rl.id));
+
+            const missingLocalLogs = localLogs.filter((ll) => {
+              if (remoteLogIds.has(ll.id)) return false;
+              return !remoteLogs.some(
+                (rl) => rl.classNumber === ll.classNumber && rl.date === ll.date
+              );
+            });
+
+            const mergedClassLogs = [...remoteLogs, ...missingLocalLogs].sort(
+              (a, b) => b.classNumber - a.classNumber
+            );
+
+            // 2. Class Number Counter
+            const maxLocalClassNum = localLogs.reduce((max, l) => Math.max(max, l.classNumber), 0);
+            const maxRemoteClassNum = remoteLogs.reduce((max, l) => Math.max(max, l.classNumber), 0);
+            const mergedClassNumber = Math.max(
+              remote.currentClassNumber || 0,
+              local.currentClassNumber || 0,
+              maxLocalClassNum,
+              maxRemoteClassNum
+            );
+
+            // 3. Student Notes Merge
             const localNotes = local.notes || [];
             const remoteNotes = remote.notes || [];
-
-            // Identificar notas locais que não estão no remoto
             const remoteNoteSignatures = new Set(
               remoteNotes.map((rn) => `${rn.id}::${rn.title}`)
             );
 
             const missingLocalNotes = localNotes.filter(
-              (ln) => !remoteNoteSignatures.has(`${ln.id}::${ln.title}`) &&
-                     !remoteNotes.some((rn) => rn.id === ln.id || (rn.title === ln.title && rn.createdAt === ln.createdAt))
+              (ln) =>
+                !remoteNoteSignatures.has(`${ln.id}::${ln.title}`) &&
+                !remoteNotes.some(
+                  (rn) => rn.id === ln.id || (rn.title === ln.title && rn.createdAt === ln.createdAt)
+                )
             );
 
-            const mergedNotes = [...remoteNotes, ...missingLocalNotes];
+            const mergedNotes = [...remoteNotes, ...missingLocalNotes].sort(
+              (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
+
+            // 4. Payment History Merge
+            const localPayments = local.paymentHistory || [];
+            const remotePayments = remote.paymentHistory || [];
+            const remotePayIds = new Set(remotePayments.map((rp) => rp.id));
+
+            const missingLocalPayments = localPayments.filter(
+              (lp) =>
+                !remotePayIds.has(lp.id) &&
+                !remotePayments.some((rp) => rp.monthYear === lp.monthYear && rp.amount === lp.amount)
+            );
+
+            const mergedPayments = [...remotePayments, ...missingLocalPayments];
+
+            // 5. Schedules Merge
+            const localSchedules = local.schedules || [];
+            const remoteSchedules = remote.schedules || [];
+            const remoteSchedIds = new Set(remoteSchedules.map((rs) => rs.id));
+
+            const missingLocalSchedules = localSchedules.filter(
+              (ls) =>
+                !remoteSchedIds.has(ls.id) &&
+                !remoteSchedules.some(
+                  (rs) => rs.day === ls.day && rs.startTime === ls.startTime
+                )
+            );
+
+            const mergedSchedules = [...remoteSchedules, ...missingLocalSchedules];
 
             return {
               ...remote,
+              currentClassNumber: mergedClassNumber,
+              classLogs: mergedClassLogs,
               notes: mergedNotes,
+              paymentHistory: mergedPayments,
+              schedules: mergedSchedules,
             };
           });
+
+          // Alunos locais que ainda não existem no remoto (recém-criados localmente)
+          const localOnlyStudents = currentLocal.filter(
+            (local) => !remoteStudents.some((remote) => remote.id === local.id || remote.name === local.name)
+          );
+
+          const mergedStudents = [...mergedRemoteStudents, ...localOnlyStudents];
 
           // Se o resultado mesclado for diferente do localStorage atual, atualiza o storage
           if (JSON.stringify(mergedStudents) !== JSON.stringify(currentLocal)) {
