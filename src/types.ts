@@ -126,6 +126,7 @@ export interface CalendarEvent {
   remoteId?: string;
   userId?: string;
   studentId?: string;
+  studentIds?: string[];
   title: string;
   description?: string;
   startAt: string; // ISO date string

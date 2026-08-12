@@ -760,9 +760,12 @@ const MonthViewGrid: React.FC<MonthViewGridProps> = ({
                 {visibleEvents.map((evt) => {
                   const typeInfo = EVENT_TYPE_LABELS[evt.eventType] || EVENT_TYPE_LABELS.other;
                   const startTime = new Date(evt.startAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                  const student = evt.studentId ? studentMap.get(evt.studentId) : null;
+                  const studentIdsList = evt.studentIds && evt.studentIds.length > 0
+                    ? evt.studentIds
+                    : evt.studentId ? [evt.studentId] : [];
+                  const assignedStudents = studentIdsList.map((id) => studentMap.get(id)).filter(Boolean) as Student[];
                   const isRescheduledClass = evt.isRescheduled || evt.status === 'rescheduled';
-                  const isOneTimeClass = evt.recurrenceType === 'none' && evt.studentId && !isRescheduledClass;
+                  const isOneTimeClass = evt.recurrenceType === 'none' && assignedStudents.length > 0 && !isRescheduledClass;
 
                   return (
                     <div
@@ -781,7 +784,13 @@ const MonthViewGrid: React.FC<MonthViewGridProps> = ({
                         <span className="truncate">{evt.title}</span>
                       </div>
                       <div className="flex items-center justify-between text-[9px] opacity-90 truncate mt-0.5">
-                        {student && <span className="truncate">👤 {student.name}</span>}
+                        {assignedStudents.length > 0 && (
+                          <span className="truncate">
+                            👥 {assignedStudents.length === 1
+                              ? assignedStudents[0].name
+                              : `${assignedStudents.map((s) => s.name.split(' ')[0]).join(', ')} (${assignedStudents.length})`}
+                          </span>
+                        )}
                         {isRescheduledClass && (
                           <span className="font-extrabold text-amber-700 dark:text-amber-300 ml-auto shrink-0 bg-amber-200/80 dark:bg-amber-900/80 px-1 rounded text-[8px]">
                             REAGENDADA
@@ -895,7 +904,10 @@ const WeekViewGrid: React.FC<WeekViewGridProps> = ({
                   </div>
                 ) : (
                   dayEvents.map((evt) => {
-                    const student = evt.studentId ? studentMap.get(evt.studentId) : null;
+                    const studentIdsList = evt.studentIds && evt.studentIds.length > 0
+                      ? evt.studentIds
+                      : evt.studentId ? [evt.studentId] : [];
+                    const assignedStudents = studentIdsList.map((id) => studentMap.get(id)).filter(Boolean) as Student[];
                     const startTime = new Date(evt.startAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                     const endTime = new Date(evt.endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                     const typeInfo = EVENT_TYPE_LABELS[evt.eventType] || EVENT_TYPE_LABELS.other;
@@ -919,10 +931,14 @@ const WeekViewGrid: React.FC<WeekViewGridProps> = ({
                           <span>{startTime} – {endTime}</span>
                         </div>
 
-                        {student && (
+                        {assignedStudents.length > 0 && (
                           <div className="text-[11px] font-medium text-slate-700 dark:text-slate-300 truncate flex items-center gap-1">
                             <User className="w-3 h-3 text-indigo-500 shrink-0" />
-                            <span>{student.name}</span>
+                            <span className="truncate">
+                              {assignedStudents.length === 1
+                                ? assignedStudents[0].name
+                                : `${assignedStudents.map((s) => s.name.split(' ')[0]).join(', ')} (${assignedStudents.length})`}
+                            </span>
                           </div>
                         )}
 
@@ -937,7 +953,7 @@ const WeekViewGrid: React.FC<WeekViewGridProps> = ({
                             </span>
                           )}
 
-                          {evt.recurrenceType === 'none' && evt.studentId && !(evt.isRescheduled || evt.status === 'rescheduled') && (
+                          {evt.recurrenceType === 'none' && assignedStudents.length > 0 && !(evt.isRescheduled || evt.status === 'rescheduled') && (
                             <span className="text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200">
                               One-time
                             </span>
@@ -1024,7 +1040,10 @@ const DayViewList: React.FC<DayViewListProps> = ({
       ) : (
         <div className="space-y-3">
           {dayEvents.map((evt) => {
-            const student = evt.studentId ? studentMap.get(evt.studentId) : null;
+            const studentIdsList = evt.studentIds && evt.studentIds.length > 0
+              ? evt.studentIds
+              : evt.studentId ? [evt.studentId] : [];
+            const assignedStudents = studentIdsList.map((id) => studentMap.get(id)).filter(Boolean) as Student[];
             const startTime = new Date(evt.startAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const endTime = new Date(evt.endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const duration = getEventDurationText(evt.startAt, evt.endAt);
@@ -1072,17 +1091,21 @@ const DayViewList: React.FC<DayViewListProps> = ({
                       </span>
                     )}
 
-                    {evt.recurrenceType === 'none' && evt.studentId && !(evt.isRescheduled || evt.status === 'rescheduled') && (
+                    {evt.recurrenceType === 'none' && assignedStudents.length > 0 && !(evt.isRescheduled || evt.status === 'rescheduled') && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200">
                         One-time Class
                       </span>
                     )}
                   </div>
 
-                  {student && (
+                  {assignedStudents.length > 0 && (
                     <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
                       <User className="w-3.5 h-3.5" />
-                      <span>Student: {student.name}</span>
+                      <span>
+                        {assignedStudents.length === 1
+                          ? `Student: ${assignedStudents[0].name}`
+                          : `Students (${assignedStudents.length}): ${assignedStudents.map(s => s.name).join(', ')}`}
+                      </span>
                     </div>
                   )}
 
@@ -1152,7 +1175,15 @@ const CalendarEventFormModal: React.FC<CalendarEventFormModalProps> = ({
   const initEnd = eventToEdit ? new Date(eventToEdit.endAt) : new Date(initialDate.getTime() + 60 * 60 * 1000);
 
   const [title, setTitle] = useState<string>(eventToEdit?.title || '');
-  const [studentId, setStudentId] = useState<string>(eventToEdit?.studentId || '');
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>(() => {
+    if (eventToEdit?.studentIds && eventToEdit.studentIds.length > 0) {
+      return eventToEdit.studentIds;
+    }
+    if (eventToEdit?.studentId) {
+      return [eventToEdit.studentId];
+    }
+    return [];
+  });
   const [eventType, setEventType] = useState<CalendarEventType>(eventToEdit?.eventType || 'class');
   const [status, setStatus] = useState<CalendarEventStatus>(eventToEdit?.status || 'scheduled');
   const [isRescheduled, setIsRescheduled] = useState<boolean>(
@@ -1187,22 +1218,54 @@ const CalendarEventFormModal: React.FC<CalendarEventFormModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
 
-  // Auto-fill title logic when student selected
-  const handleStudentChange = (newStudentId: string) => {
-    setStudentId(newStudentId);
-    if (newStudentId) {
-      const student = students.find((s) => s.id === newStudentId);
-      if (student) {
-        if (isRescheduled) {
-          setTitle(`${student.name} — Rescheduled Class`);
-        } else if (
-          !title.trim() ||
-          title.startsWith('Class —') ||
-          title.startsWith('Aula —') ||
-          title.includes('One-time') ||
-          title.includes('Rescheduled')
-        ) {
-          setTitle(`Class — ${student.name}`);
+  // Student selection helpers
+  const toggleStudent = (id: string) => {
+    const next = selectedStudentIds.includes(id)
+      ? selectedStudentIds.filter((sId) => sId !== id)
+      : [...selectedStudentIds, id];
+    setSelectedStudentIds(next);
+    autoUpdateTitle(next, isRescheduled);
+  };
+
+  const selectAllStudents = () => {
+    const allIds = students.map((s) => s.id);
+    setSelectedStudentIds(allIds);
+    autoUpdateTitle(allIds, isRescheduled);
+  };
+
+  const clearStudents = () => {
+    setSelectedStudentIds([]);
+    autoUpdateTitle([], isRescheduled);
+  };
+
+  const autoUpdateTitle = (studentIdsList: string[], rescheduled: boolean) => {
+    if (studentIdsList.length === 0) {
+      if (!title.trim() || title.startsWith('Class —') || title.startsWith('Group Class —') || title.startsWith('Aula —') || title.includes('Rescheduled')) {
+        setTitle(rescheduled ? 'Rescheduled Class' : 'Class');
+      }
+      return;
+    }
+    const names = students
+      .filter((s) => studentIdsList.includes(s.id))
+      .map((s) => s.name);
+
+    if (names.length > 0) {
+      const namesStr = names.join(', ');
+      const isGroup = names.length > 1;
+      const prefix = isGroup ? 'Group Class — ' : 'Class — ';
+
+      if (
+        !title.trim() ||
+        title.startsWith('Class —') ||
+        title.startsWith('Group Class —') ||
+        title.startsWith('Aula —') ||
+        title.includes('One-time') ||
+        title.includes('Rescheduled')
+      ) {
+        if (rescheduled) {
+          setTitle(`${namesStr} — Rescheduled Class`);
+        } else {
+          setTitle(`${prefix}${namesStr}`);
         }
       }
     }
@@ -1210,11 +1273,8 @@ const CalendarEventFormModal: React.FC<CalendarEventFormModalProps> = ({
 
   const handleEventTypeChange = (newType: CalendarEventType) => {
     setEventType(newType);
-    if (newType === 'class' && studentId) {
-      const student = students.find((s) => s.id === studentId);
-      if (student && (!title.trim() || title.startsWith('Class —') || title.startsWith('Aula —'))) {
-        setTitle(isRescheduled ? `${student.name} — Rescheduled Class` : `Class — ${student.name}`);
-      }
+    if (newType === 'class' && selectedStudentIds.length > 0) {
+      autoUpdateTitle(selectedStudentIds, isRescheduled);
     }
   };
 
@@ -1222,24 +1282,12 @@ const CalendarEventFormModal: React.FC<CalendarEventFormModalProps> = ({
     setIsRescheduled(checked);
     if (checked) {
       setStatus('rescheduled');
-      if (studentId) {
-        const student = students.find((s) => s.id === studentId);
-        if (student) {
-          setTitle(`${student.name} — Rescheduled Class`);
-        }
-      } else if (!title || title === 'Class' || title.startsWith('Class —')) {
-        setTitle('Rescheduled Class');
-      }
+      autoUpdateTitle(selectedStudentIds, true);
     } else {
       if (status === 'rescheduled') {
         setStatus('scheduled');
       }
-      if (studentId) {
-        const student = students.find((s) => s.id === studentId);
-        if (student && (title.includes('Rescheduled Class') || title.includes('Aula Reagendada'))) {
-          setTitle(`Class — ${student.name}`);
-        }
-      }
+      autoUpdateTitle(selectedStudentIds, false);
     }
   };
 
@@ -1274,10 +1322,12 @@ const CalendarEventFormModal: React.FC<CalendarEventFormModalProps> = ({
     try {
       const finalStatus = isRescheduled ? 'rescheduled' : status;
       const effectiveRecurrence = isOneTimePreset ? 'none' : recurrenceType;
+      const primaryStudentId = selectedStudentIds[0] || undefined;
 
       const payload: Partial<CalendarEvent> = {
         title: title.trim(),
-        studentId: studentId || undefined,
+        studentId: primaryStudentId,
+        studentIds: selectedStudentIds,
         eventType,
         status: finalStatus,
         isRescheduled,
@@ -1401,41 +1451,107 @@ const CalendarEventFormModal: React.FC<CalendarEventFormModalProps> = ({
             />
           </div>
 
-          {/* Student & Event Type Row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                Student
+          {/* Event Type */}
+          <div>
+            <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
+              Event Type
+            </label>
+            <select
+              value={eventType}
+              onChange={(e) => handleEventTypeChange(e.target.value as CalendarEventType)}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 font-medium"
+            >
+              {Object.entries(EVENT_TYPE_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Student Selection (Supports Multiple Students for One-time / Group Classes) */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-slate-700 dark:text-slate-300 font-semibold">
+                Students / Alunos ({selectedStudentIds.length} selected)
               </label>
-              <select
-                value={studentId}
-                onChange={(e) => handleStudentChange(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 font-medium"
-              >
-                <option value="">-- No Student Assigned --</option>
-                {students.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.englishLevel})
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center gap-2 text-[11px]">
+                <button
+                  type="button"
+                  onClick={selectAllStudents}
+                  className="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
+                >
+                  Select All
+                </button>
+                <span className="text-slate-300 dark:text-slate-700">|</span>
+                <button
+                  type="button"
+                  onClick={clearStudents}
+                  className="text-slate-500 hover:underline font-semibold"
+                >
+                  Clear
+                </button>
+              </div>
             </div>
 
-            <div>
-              <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                Event Type
-              </label>
-              <select
-                value={eventType}
-                onChange={(e) => handleEventTypeChange(e.target.value as CalendarEventType)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
-              >
-                {Object.entries(EVENT_TYPE_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v.label}
-                  </option>
-                ))}
-              </select>
+            {/* Selected Student Badges */}
+            {selectedStudentIds.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 p-2 bg-indigo-50/60 dark:bg-indigo-950/40 rounded-xl border border-indigo-100 dark:border-indigo-900/50">
+                {selectedStudentIds.map((sId) => {
+                  const student = students.find((s) => s.id === sId);
+                  if (!student) return null;
+                  return (
+                    <span
+                      key={sId}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-100 dark:bg-indigo-900/80 text-indigo-900 dark:text-indigo-200 text-xs font-semibold shadow-2xs"
+                    >
+                      <span>{student.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => toggleStudent(sId)}
+                        className="hover:text-rose-600 transition ml-0.5"
+                        title="Remove student"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Student List Checkboxes */}
+            <div className="max-h-36 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl p-2 bg-slate-50 dark:bg-slate-800/80 space-y-1">
+              {students.length === 0 ? (
+                <div className="text-center py-3 text-slate-400 text-xs">No students registered yet.</div>
+              ) : (
+                students.map((s) => {
+                  const isChecked = selectedStudentIds.includes(s.id);
+                  return (
+                    <label
+                      key={s.id}
+                      className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition ${
+                        isChecked
+                          ? 'bg-indigo-50/90 dark:bg-indigo-950/90 border border-indigo-200 dark:border-indigo-800'
+                          : 'hover:bg-slate-100 dark:hover:bg-slate-700/50 border border-transparent'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleStudent(s.id)}
+                          className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                        />
+                        <span className="font-medium text-slate-800 dark:text-slate-200">{s.name}</span>
+                      </div>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200/70 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold">
+                        {s.englishLevel}
+                      </span>
+                    </label>
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -1673,7 +1789,10 @@ const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
   onDelete,
   onStatusChange,
 }) => {
-  const student = event.studentId ? studentMap.get(event.studentId) : null;
+  const studentIdsList = event.studentIds && event.studentIds.length > 0
+    ? event.studentIds
+    : event.studentId ? [event.studentId] : [];
+  const assignedStudents = studentIdsList.map((id) => studentMap.get(id)).filter(Boolean) as Student[];
   const startDate = new Date(event.startAt);
   const endDate = new Date(event.endAt);
 
@@ -1712,7 +1831,7 @@ const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
                   Rescheduled Class
                 </span>
               )}
-              {event.recurrenceType === 'none' && student && !(event.isRescheduled || event.status === 'rescheduled') && (
+              {event.recurrenceType === 'none' && assignedStudents.length > 0 && !(event.isRescheduled || event.status === 'rescheduled') && (
                 <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200">
                   One-time Class
                 </span>
@@ -1750,15 +1869,27 @@ const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
             </div>
           </div>
 
-          {/* Student */}
-          {student && (
-            <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
-              <User className="w-4 h-4 text-indigo-500 shrink-0" />
-              <div>
-                <span className="font-semibold">Student:</span> {student.name}{' '}
-                <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-600 font-bold">
-                  {student.englishLevel}
+          {/* Student(s) */}
+          {assignedStudents.length > 0 && (
+            <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
+              <User className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+              <div className="space-y-1.5 w-full">
+                <span className="font-semibold block">
+                  {assignedStudents.length > 1 ? `Students (${assignedStudents.length}):` : 'Student:'}
                 </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {assignedStudents.map((s) => (
+                    <span
+                      key={s.id}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/80 border border-indigo-200/60 dark:border-indigo-800/60 text-indigo-900 dark:text-indigo-200 text-xs font-medium"
+                    >
+                      <span>{s.name}</span>
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-200/60 dark:bg-indigo-800/60 font-bold">
+                        {s.englishLevel}
+                      </span>
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
           )}

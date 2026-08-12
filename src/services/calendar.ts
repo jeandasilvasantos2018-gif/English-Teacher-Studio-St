@@ -289,11 +289,23 @@ export function mapRowToEvent(row: CalendarEventRow): CalendarEvent {
     studentLocalId = row.student_id;
   }
 
+  let studentIds: string[] | undefined = (row as any).studentIds || (row as any).student_ids;
+  if (!studentIds && row.description && row.description.includes('[students:')) {
+    const match = row.description.match(/\[students:\s*([^\]]+)\]/);
+    if (match && match[1]) {
+      studentIds = match[1].split(',').map((s: string) => s.trim()).filter(Boolean);
+    }
+  }
+  if (!studentIds && studentLocalId) {
+    studentIds = [studentLocalId];
+  }
+
   return {
     id: localId,
     remoteId: remoteUuid,
     userId: row.user_id || undefined,
-    studentId: studentLocalId || undefined,
+    studentId: studentLocalId || (studentIds && studentIds[0]) || undefined,
+    studentIds: studentIds || undefined,
     title: row.title || 'Untitled Event',
     description: row.description || undefined,
     startAt: row.start_at,
@@ -334,12 +346,19 @@ export function mapEventToRow(
   userId: string,
   resolvedStudentId: string | null = null
 ): CalendarEventPayload {
+  let desc = event.description || '';
+  if (event.studentIds && event.studentIds.length > 1) {
+    if (!desc.includes('[students:')) {
+      desc = `${desc} [students: ${event.studentIds.join(',')}]`.trim();
+    }
+  }
+
   return {
     user_id: userId,
     local_id: event.id || '',
     student_id: resolvedStudentId,
     title: event.title || 'Untitled Event',
-    description: event.description || null,
+    description: desc || null,
     start_at: event.startAt || new Date().toISOString(),
     end_at: event.endAt || new Date().toISOString(),
     event_type: event.eventType || 'other',
@@ -1086,7 +1105,7 @@ export async function getEventsBetweenDates(
 
       const overlaps = eStart <= rangeEnd && eEnd >= rangeStart;
       if (!overlaps) return false;
-      if (studentId && e.studentId !== studentId) return false;
+      if (studentId && e.studentId !== studentId && (!e.studentIds || !e.studentIds.includes(studentId))) return false;
       return true;
     });
 
@@ -1108,7 +1127,7 @@ export async function getEventsBetweenDates(
         return (
           eStart <= rangeEnd &&
           eEnd >= rangeStart &&
-          (!studentId || e.studentId === studentId)
+          (!studentId || e.studentId === studentId || (e.studentIds && e.studentIds.includes(studentId)))
         );
       });
       return createResult(
@@ -1172,7 +1191,7 @@ export async function getUpcomingEvents(
       .filter(
         (e) =>
           new Date(e.startAt).getTime() >= nowMs &&
-          (!studentId || e.studentId === studentId)
+          (!studentId || e.studentId === studentId || (e.studentIds && e.studentIds.includes(studentId)))
       )
       .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
       .slice(0, limit);
