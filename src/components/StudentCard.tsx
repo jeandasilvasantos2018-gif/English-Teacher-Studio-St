@@ -45,7 +45,8 @@ export const StudentCard: React.FC<StudentCardProps> = ({
   const nextClass = getNextClassInfo(student);
 
   // Recent pinned or top note
-  const topNote = student.notes.find((n) => n.pinned) || student.notes[0];
+  const notesList = student.notes || [];
+  const topNote = notesList.find((n) => n.pinned) || notesList[0];
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-900/60 transition-all duration-200 flex flex-col justify-between overflow-hidden group">

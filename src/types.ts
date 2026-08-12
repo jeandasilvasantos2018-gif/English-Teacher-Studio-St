@@ -132,6 +132,7 @@ export interface CalendarEvent {
   endAt: string;   // ISO date string
   eventType: CalendarEventType;
   status: CalendarEventStatus;
+  isRescheduled?: boolean;
   locationUrl?: string;
   color?: string;
   allDay?: boolean;

@@ -304,6 +304,10 @@ export function mapRowToEvent(row: CalendarEventRow): CalendarEvent {
     status: (ALLOWED_STATUSES.includes(row.status as CalendarEventStatus)
       ? row.status
       : 'scheduled') as CalendarEventStatus,
+    isRescheduled:
+      row.status === 'rescheduled' ||
+      (row.description ? row.description.includes('[Rescheduled]') : false) ||
+      (row.title ? row.title.toLowerCase().includes('rescheduled') || row.title.toLowerCase().includes('reagendada') : false),
     locationUrl: row.location_url || undefined,
     color: row.color || undefined,
     allDay: row.all_day ?? false,

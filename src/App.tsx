@@ -70,7 +70,25 @@ export default function App() {
   useEffect(() => {
     const loaded = loadStudents();
     setStudents(loaded);
-  }, []);
+
+    const handleStudentsUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent<Student[]>;
+      if (customEvent.detail && Array.isArray(customEvent.detail)) {
+        setStudents(customEvent.detail);
+        if (selectedStudent) {
+          const updated = customEvent.detail.find((s) => s.id === selectedStudent.id);
+          if (updated) {
+            setSelectedStudent(updated);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('students_updated', handleStudentsUpdated);
+    return () => {
+      window.removeEventListener('students_updated', handleStudentsUpdated);
+    };
+  }, [selectedStudent]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);

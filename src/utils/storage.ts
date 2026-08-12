@@ -98,14 +98,40 @@ export function loadStudents(): Student[] {
       .then(({ data: remoteStudents, error }) => {
         if (!error && remoteStudents && Array.isArray(remoteStudents) && remoteStudents.length > 0) {
           const currentLocalRaw = localStorage.getItem(STORAGE_KEY);
-          const currentLocal = currentLocalRaw ? JSON.parse(currentLocalRaw) : [];
+          const currentLocal: Student[] = currentLocalRaw ? JSON.parse(currentLocalRaw) : [];
 
-          // Se a quantidade de alunos for diferente ou houver dados válidos, substitui o localStorage
-          if (remoteStudents.length !== currentLocal.length || JSON.stringify(remoteStudents) !== JSON.stringify(currentLocal)) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteStudents));
+          // Mesclar dados do Supabase com o localStorage preservando notas locais não sincronizadas
+          const mergedStudents = remoteStudents.map((remote) => {
+            const local = currentLocal.find((l) => l.id === remote.id || l.name === remote.name);
+            if (!local) return remote;
+
+            const localNotes = local.notes || [];
+            const remoteNotes = remote.notes || [];
+
+            // Identificar notas locais que não estão no remoto
+            const remoteNoteSignatures = new Set(
+              remoteNotes.map((rn) => `${rn.id}::${rn.title}`)
+            );
+
+            const missingLocalNotes = localNotes.filter(
+              (ln) => !remoteNoteSignatures.has(`${ln.id}::${ln.title}`) &&
+                     !remoteNotes.some((rn) => rn.id === ln.id || (rn.title === ln.title && rn.createdAt === ln.createdAt))
+            );
+
+            const mergedNotes = [...remoteNotes, ...missingLocalNotes];
+
+            return {
+              ...remote,
+              notes: mergedNotes,
+            };
+          });
+
+          // Se o resultado mesclado for diferente do localStorage atual, atualiza o storage
+          if (JSON.stringify(mergedStudents) !== JSON.stringify(currentLocal)) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(mergedStudents));
             
-            // Dispara evento para atualização automática do estado na aplicação caso haja ouvintes
-            window.dispatchEvent(new CustomEvent('students_updated', { detail: remoteStudents }));
+            // Dispara evento para atualização automática do estado na aplicação
+            window.dispatchEvent(new CustomEvent('students_updated', { detail: mergedStudents }));
             window.dispatchEvent(new Event('storage'));
           }
         }
@@ -151,7 +177,7 @@ export function logClassForStudent(
       classNumber: nextClassNum,
     };
 
-    const updatedNotes = [...std.notes];
+    const updatedNotes = [...(std.notes || [])];
     if (logData.topic || logData.notes) {
       updatedNotes.unshift({
         id: `note-${Date.now()}`,
@@ -237,7 +263,7 @@ export function addNoteToStudent(
 
     return {
       ...std,
-      notes: [newNote, ...std.notes],
+      notes: [newNote, ...(std.notes || [])],
     };
   });
 
@@ -249,7 +275,7 @@ export function togglePinNote(students: Student[], studentId: string, noteId: st
   const updated = students.map((std) => {
     if (std.id !== studentId) return std;
 
-    const updatedNotes = std.notes.map((n) => (n.id === noteId ? { ...n, pinned: !n.pinned } : n));
+    const updatedNotes = (std.notes || []).map((n) => (n.id === noteId ? { ...n, pinned: !n.pinned } : n));
     return { ...std, notes: updatedNotes };
   });
 
@@ -261,7 +287,7 @@ export function deleteNote(students: Student[], studentId: string, noteId: strin
   const updated = students.map((std) => {
     if (std.id !== studentId) return std;
 
-    const updatedNotes = std.notes.filter((n) => n.id !== noteId);
+    const updatedNotes = (std.notes || []).filter((n) => n.id !== noteId);
     return { ...std, notes: updatedNotes };
   });
 

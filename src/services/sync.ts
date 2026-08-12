@@ -387,6 +387,13 @@ export async function getStudentsFromSupabase(): Promise<{ data: Student[] | nul
       supabase.from('student_notes').select('*').in('student_id', studentIds),
     ]);
 
+    // Se houver erro de consulta nas sub-tabelas, interromper para não sobreescrever os dados locais com listas vazias
+    if (schedulesRes.error || logsRes.error || paymentsRes.error || notesRes.error) {
+      const errDetail = notesRes.error?.message || logsRes.error?.message || paymentsRes.error?.message || schedulesRes.error?.message || 'Erro ao carregar sub-entidades do Supabase.';
+      console.error('=== ERRO SUPABASE AO BUSCAR SUB-ENTIDADES ===', errDetail);
+      return { data: null, error: errDetail };
+    }
+
     const schedulesMap = new Map<string, ClassScheduleSlot[]>();
     const logsMap = new Map<string, ClassSessionLog[]>();
     const paymentsMap = new Map<string, MonthlyPaymentRecord[]>();

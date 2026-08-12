@@ -315,9 +315,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ students, onSelectSt
   }, [currentDate, viewMode]);
 
   // Helper for open form prefilled with date
-  const handleOpenNewEvent = (presetDate?: Date) => {
+  const [isOneTimeModalPreset, setIsOneTimeModalPreset] = useState<boolean>(false);
+
+  const handleOpenNewEvent = (presetDate?: Date, isOneTime = false) => {
     setEditingEvent(null);
     setSelectedEventForDetails(null);
+    setIsOneTimeModalPreset(isOneTime);
     const targetDate = presetDate || currentDate;
     setFormInitialDate(targetDate);
     setIsFormOpen(true);
@@ -437,9 +440,19 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ students, onSelectSt
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
 
+            {/* One-time Class Button */}
+            <button
+              onClick={() => handleOpenNewEvent(undefined, true)}
+              className="h-9 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-xs transition flex items-center gap-1.5"
+              title="Add a single non-recurring class"
+            >
+              <CalendarDays className="w-4 h-4 shrink-0" />
+              <span>+ Add One-time Class</span>
+            </button>
+
             {/* New Event Button */}
             <button
-              onClick={() => handleOpenNewEvent()}
+              onClick={() => handleOpenNewEvent(undefined, false)}
               className="h-9 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-xs transition flex items-center gap-1.5"
             >
               <Plus className="w-4 h-4 shrink-0" />
@@ -578,6 +591,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ students, onSelectSt
           initialDate={formInitialDate}
           eventToEdit={editingEvent}
           students={students}
+          isOneTimePreset={isOneTimeModalPreset}
           onClose={() => setIsFormOpen(false)}
           onSaved={(savedEvent) => {
             setIsFormOpen(false);
@@ -747,6 +761,8 @@ const MonthViewGrid: React.FC<MonthViewGridProps> = ({
                   const typeInfo = EVENT_TYPE_LABELS[evt.eventType] || EVENT_TYPE_LABELS.other;
                   const startTime = new Date(evt.startAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                   const student = evt.studentId ? studentMap.get(evt.studentId) : null;
+                  const isRescheduledClass = evt.isRescheduled || evt.status === 'rescheduled';
+                  const isOneTimeClass = evt.recurrenceType === 'none' && evt.studentId && !isRescheduledClass;
 
                   return (
                     <div
@@ -755,18 +771,28 @@ const MonthViewGrid: React.FC<MonthViewGridProps> = ({
                         e.stopPropagation();
                         onSelectEvent(evt);
                       }}
-                      style={{ borderLeftColor: evt.color || '#6366f1' }}
-                      className={`text-[10px] leading-snug p-1 rounded-md border-l-3 transition truncate shadow-2xs hover:opacity-90 ${typeInfo.bg} ${typeInfo.text}`}
+                      style={{ borderLeftColor: isRescheduledClass ? '#f59e0b' : (evt.color || '#6366f1') }}
+                      className={`text-[10px] leading-snug p-1 rounded-md border-l-3 transition truncate shadow-2xs hover:opacity-90 ${
+                        isRescheduledClass ? 'bg-amber-100/90 dark:bg-amber-950/70 text-amber-950 dark:text-amber-100 font-medium' : `${typeInfo.bg} ${typeInfo.text}`
+                      }`}
                     >
                       <div className="font-semibold truncate flex items-center gap-1">
                         {!evt.allDay && <span className="opacity-75 font-mono">{startTime}</span>}
                         <span className="truncate">{evt.title}</span>
                       </div>
-                      {student && (
-                        <div className="text-[9px] opacity-80 truncate">
-                          👤 {student.name}
-                        </div>
-                      )}
+                      <div className="flex items-center justify-between text-[9px] opacity-90 truncate mt-0.5">
+                        {student && <span className="truncate">👤 {student.name}</span>}
+                        {isRescheduledClass && (
+                          <span className="font-extrabold text-amber-700 dark:text-amber-300 ml-auto shrink-0 bg-amber-200/80 dark:bg-amber-900/80 px-1 rounded text-[8px]">
+                            REAGENDADA
+                          </span>
+                        )}
+                        {isOneTimeClass && !isRescheduledClass && (
+                          <span className="font-bold text-emerald-700 dark:text-emerald-300 ml-auto shrink-0 bg-emerald-100/80 dark:bg-emerald-950 px-1 rounded text-[8px]">
+                            AVULSA
+                          </span>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -900,10 +926,22 @@ const WeekViewGrid: React.FC<WeekViewGridProps> = ({
                           </div>
                         )}
 
-                        <div className="pt-0.5 flex items-center justify-between">
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase ${statusInfo.badge}`}>
-                            {statusInfo.label}
-                          </span>
+                        <div className="pt-0.5 flex items-center justify-between gap-1 flex-wrap">
+                          {evt.isRescheduled || evt.status === 'rescheduled' ? (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-md font-extrabold uppercase bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200 border border-amber-300">
+                              Rescheduled Class
+                            </span>
+                          ) : (
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase ${statusInfo.badge}`}>
+                              {statusInfo.label}
+                            </span>
+                          )}
+
+                          {evt.recurrenceType === 'none' && evt.studentId && !(evt.isRescheduled || evt.status === 'rescheduled') && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200">
+                              One-time
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
@@ -1024,9 +1062,21 @@ const DayViewList: React.FC<DayViewListProps> = ({
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${typeInfo.bg} ${typeInfo.text} ${typeInfo.border} border`}>
                       {typeInfo.label}
                     </span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${statusInfo.badge}`}>
-                      {statusInfo.label}
-                    </span>
+                    {(evt.isRescheduled || evt.status === 'rescheduled') ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-extrabold uppercase bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200 border border-amber-300">
+                        Rescheduled Class
+                      </span>
+                    ) : (
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${statusInfo.badge}`}>
+                        {statusInfo.label}
+                      </span>
+                    )}
+
+                    {evt.recurrenceType === 'none' && evt.studentId && !(evt.isRescheduled || evt.status === 'rescheduled') && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200">
+                        One-time Class
+                      </span>
+                    )}
                   </div>
 
                   {student && (
@@ -1079,6 +1129,7 @@ interface CalendarEventFormModalProps {
   initialDate: Date;
   eventToEdit: CalendarEvent | null;
   students: Student[];
+  isOneTimePreset?: boolean;
   onClose: () => void;
   onSaved: (event: CalendarEvent) => void;
 }
@@ -1088,6 +1139,7 @@ const CalendarEventFormModal: React.FC<CalendarEventFormModalProps> = ({
   initialDate,
   eventToEdit,
   students,
+  isOneTimePreset = false,
   onClose,
   onSaved,
 }) => {
@@ -1103,20 +1155,25 @@ const CalendarEventFormModal: React.FC<CalendarEventFormModalProps> = ({
   const [studentId, setStudentId] = useState<string>(eventToEdit?.studentId || '');
   const [eventType, setEventType] = useState<CalendarEventType>(eventToEdit?.eventType || 'class');
   const [status, setStatus] = useState<CalendarEventStatus>(eventToEdit?.status || 'scheduled');
-  
+  const [isRescheduled, setIsRescheduled] = useState<boolean>(
+    eventToEdit?.isRescheduled || eventToEdit?.status === 'rescheduled' || false
+  );
+
   const [dateStr, setDateStr] = useState<string>(formatDateToInput(initStart));
   const [startTimeStr, setStartTimeStr] = useState<string>(formatTimeToInput(initStart));
   const [endTimeStr, setEndTimeStr] = useState<string>(formatTimeToInput(initEnd));
-  
+
   const [allDay, setAllDay] = useState<boolean>(eventToEdit?.allDay || false);
   const [description, setDescription] = useState<string>(eventToEdit?.description || '');
   const [locationUrl, setLocationUrl] = useState<string>(eventToEdit?.locationUrl || '');
-  const [color, setColor] = useState<string>(eventToEdit?.color || '#6366f1');
-  
-  const [recurrenceType, setRecurrenceType] = useState<CalendarRecurrenceType>(eventToEdit?.recurrenceType || 'none');
+  const [color, setColor] = useState<string>(eventToEdit?.color || (isOneTimePreset ? '#10b981' : '#6366f1'));
+
+  const [recurrenceType, setRecurrenceType] = useState<CalendarRecurrenceType>(
+    isOneTimePreset ? 'none' : eventToEdit?.recurrenceType || 'none'
+  );
   const [recurrenceInterval, setRecurrenceInterval] = useState<number>(eventToEdit?.recurrenceInterval || 1);
   const [recurrenceEndDate, setRecurrenceEndDate] = useState<string>(eventToEdit?.recurrenceEndDate || '');
-  
+
   const [reminderMinutes, setReminderMinutes] = useState<number>(() => {
     if (eventToEdit?.reminderMinutes && Array.isArray(eventToEdit.reminderMinutes)) {
       return eventToEdit.reminderMinutes[0] ?? 15;
@@ -1130,13 +1187,23 @@ const CalendarEventFormModal: React.FC<CalendarEventFormModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
 
-  // Auto-fill title logic when student selected & eventType === 'class'
+  // Auto-fill title logic when student selected
   const handleStudentChange = (newStudentId: string) => {
     setStudentId(newStudentId);
-    if (newStudentId && eventType === 'class') {
+    if (newStudentId) {
       const student = students.find((s) => s.id === newStudentId);
-      if (student && (!title.trim() || title.startsWith('Class —') || title.startsWith('Aula —'))) {
-        setTitle(`Class — ${student.name}`);
+      if (student) {
+        if (isRescheduled) {
+          setTitle(`${student.name} — Rescheduled Class`);
+        } else if (
+          !title.trim() ||
+          title.startsWith('Class —') ||
+          title.startsWith('Aula —') ||
+          title.includes('One-time') ||
+          title.includes('Rescheduled')
+        ) {
+          setTitle(`Class — ${student.name}`);
+        }
       }
     }
   };
@@ -1146,7 +1213,32 @@ const CalendarEventFormModal: React.FC<CalendarEventFormModalProps> = ({
     if (newType === 'class' && studentId) {
       const student = students.find((s) => s.id === studentId);
       if (student && (!title.trim() || title.startsWith('Class —') || title.startsWith('Aula —'))) {
-        setTitle(`Class — ${student.name}`);
+        setTitle(isRescheduled ? `${student.name} — Rescheduled Class` : `Class — ${student.name}`);
+      }
+    }
+  };
+
+  const handleRescheduledToggle = (checked: boolean) => {
+    setIsRescheduled(checked);
+    if (checked) {
+      setStatus('rescheduled');
+      if (studentId) {
+        const student = students.find((s) => s.id === studentId);
+        if (student) {
+          setTitle(`${student.name} — Rescheduled Class`);
+        }
+      } else if (!title || title === 'Class' || title.startsWith('Class —')) {
+        setTitle('Rescheduled Class');
+      }
+    } else {
+      if (status === 'rescheduled') {
+        setStatus('scheduled');
+      }
+      if (studentId) {
+        const student = students.find((s) => s.id === studentId);
+        if (student && (title.includes('Rescheduled Class') || title.includes('Aula Reagendada'))) {
+          setTitle(`Class — ${student.name}`);
+        }
       }
     }
   };
@@ -1180,20 +1272,24 @@ const CalendarEventFormModal: React.FC<CalendarEventFormModalProps> = ({
     setSaving(true);
 
     try {
+      const finalStatus = isRescheduled ? 'rescheduled' : status;
+      const effectiveRecurrence = isOneTimePreset ? 'none' : recurrenceType;
+
       const payload: Partial<CalendarEvent> = {
         title: title.trim(),
         studentId: studentId || undefined,
         eventType,
-        status,
+        status: finalStatus,
+        isRescheduled,
         startAt: startIso,
         endAt: endIso,
         allDay,
         description: description.trim() || undefined,
         locationUrl: locationUrl.trim() || undefined,
         color,
-        recurrenceType,
-        recurrenceInterval: recurrenceType !== 'none' ? recurrenceInterval : undefined,
-        recurrenceEndDate: recurrenceType !== 'none' && recurrenceEndDate ? recurrenceEndDate : undefined,
+        recurrenceType: effectiveRecurrence,
+        recurrenceInterval: effectiveRecurrence !== 'none' ? recurrenceInterval : undefined,
+        recurrenceEndDate: effectiveRecurrence !== 'none' && recurrenceEndDate ? recurrenceEndDate : undefined,
         reminderMinutes: [reminderMinutes],
       };
 
@@ -1224,12 +1320,25 @@ const CalendarEventFormModal: React.FC<CalendarEventFormModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/80 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+              isOneTimePreset ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400' : 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400'
+            }`}>
               <CalendarIcon className="w-4 h-4" />
             </div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">
-              {isEdit ? 'Edit Calendar Event' : 'New Calendar Event'}
-            </h3>
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                {isEdit
+                  ? 'Edit Calendar Event'
+                  : isOneTimePreset
+                  ? 'New One-time Class / Aula Avulsa'
+                  : 'New Calendar Event'}
+              </h3>
+              {isOneTimePreset && (
+                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                  Single lesson occurrence (No recurring schedule created)
+                </p>
+              )}
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -1238,6 +1347,16 @@ const CalendarEventFormModal: React.FC<CalendarEventFormModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Informational Banner for One-Time Class */}
+        {(isOneTimePreset || recurrenceType === 'none') && (
+          <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/80 text-emerald-900 dark:text-emerald-300 p-3 rounded-xl text-xs flex items-start gap-2.5">
+            <Info className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+            <div className="leading-relaxed">
+              <span className="font-bold">One-time Class (Aula Avulsa):</span> Takes place strictly on this date. It will <strong className="underline decoration-emerald-400">not</strong> alter the student's recurring weekly schedule or create duplicate future classes.
+            </div>
+          </div>
+        )}
 
         {/* Error Alert */}
         {errorMsg && (
@@ -1249,6 +1368,24 @@ const CalendarEventFormModal: React.FC<CalendarEventFormModalProps> = ({
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
           
+          {/* Mark as Rescheduled Option */}
+          <div className="p-3 bg-amber-50/80 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-800/60 flex items-center justify-between">
+            <label className="flex items-center gap-2.5 cursor-pointer font-semibold text-amber-900 dark:text-amber-200">
+              <input
+                type="checkbox"
+                checked={isRescheduled}
+                onChange={(e) => handleRescheduledToggle(e.target.checked)}
+                className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4"
+              />
+              <span>Mark as Rescheduled Class / Aula reagendada</span>
+            </label>
+            {isRescheduled && (
+              <span className="text-[10px] px-2 py-0.5 bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 font-bold rounded-md uppercase tracking-wider">
+                Rescheduled
+              </span>
+            )}
+          </div>
+
           {/* Title */}
           <div>
             <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
@@ -1257,7 +1394,7 @@ const CalendarEventFormModal: React.FC<CalendarEventFormModalProps> = ({
             <input
               type="text"
               required
-              placeholder="e.g. Class — Alex Rivera or Exam Review"
+              placeholder="e.g. Class — Alex Rivera or Rescheduled Class — Alex"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
@@ -1268,12 +1405,12 @@ const CalendarEventFormModal: React.FC<CalendarEventFormModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                Student (Optional)
+                Student
               </label>
               <select
                 value={studentId}
                 onChange={(e) => handleStudentChange(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 font-medium"
               >
                 <option value="">-- No Student Assigned --</option>
                 {students.map((s) => (
@@ -1561,14 +1698,26 @@ const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
         {/* Header / Color Bar */}
         <div
           className="h-2.5 rounded-full -mt-2 -mx-2 mb-2"
-          style={{ backgroundColor: event.color || '#6366f1' }}
+          style={{ backgroundColor: event.isRescheduled || event.status === 'rescheduled' ? '#f59e0b' : (event.color || '#6366f1') }}
         />
 
         <div className="flex items-start justify-between">
           <div className="space-y-1">
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${typeInfo.bg} ${typeInfo.text} ${typeInfo.border} border`}>
-              {typeInfo.label}
-            </span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${typeInfo.bg} ${typeInfo.text} ${typeInfo.border} border`}>
+                {typeInfo.label}
+              </span>
+              {(event.isRescheduled || event.status === 'rescheduled') && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-extrabold uppercase bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200 border border-amber-300">
+                  Rescheduled Class
+                </span>
+              )}
+              {event.recurrenceType === 'none' && student && !(event.isRescheduled || event.status === 'rescheduled') && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200">
+                  One-time Class
+                </span>
+              )}
+            </div>
             <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
               {event.title}
             </h3>
@@ -1674,6 +1823,16 @@ const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
               <span>Completed</span>
+            </button>
+          )}
+
+          {event.status !== 'rescheduled' && (
+            <button
+              onClick={() => onStatusChange('rescheduled')}
+              className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 rounded-lg font-semibold flex items-center gap-1 border border-amber-200/80 transition"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Rescheduled</span>
             </button>
           )}
 

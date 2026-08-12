@@ -55,10 +55,10 @@ export const StudentList: React.FC<StudentListProps> = ({
         const query = searchTerm.toLowerCase();
         const nameMatch = student.name.toLowerCase().includes(query);
         const goalMatch = student.targetGoal?.toLowerCase().includes(query);
-        const noteMatch = student.notes.some(
+        const noteMatch = (student.notes || []).some(
           (n) => n.title.toLowerCase().includes(query) || n.content.toLowerCase().includes(query)
         );
-        const topicMatch = student.classLogs.some((l) => l.topic?.toLowerCase().includes(query));
+        const topicMatch = (student.classLogs || []).some((l) => l.topic?.toLowerCase().includes(query));
         if (!nameMatch && !goalMatch && !noteMatch && !topicMatch) return false;
       }
 

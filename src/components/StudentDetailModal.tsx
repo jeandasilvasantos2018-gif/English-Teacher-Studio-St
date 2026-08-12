@@ -301,11 +301,12 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
       id: `note-${Date.now()}`,
       createdAt: new Date().toISOString(),
       category: newNoteCategory,
-      title: newNoteTitle,
-      content: newNoteContent,
+      title: newNoteTitle.trim(),
+      content: newNoteContent.trim(),
       pinned: false,
     };
-    const updatedNotes = [note, ...student.notes];
+    const currentNotes = student.notes || [];
+    const updatedNotes = [note, ...currentNotes];
     onUpdateStudent({ ...student, notes: updatedNotes });
     setNewNoteTitle('');
     setNewNoteContent('');
@@ -313,13 +314,15 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
 
   // Toggle Pin Note
   const handleTogglePin = (noteId: string) => {
-    const updatedNotes = student.notes.map((n) => (n.id === noteId ? { ...n, pinned: !n.pinned } : n));
+    const currentNotes = student.notes || [];
+    const updatedNotes = currentNotes.map((n) => (n.id === noteId ? { ...n, pinned: !n.pinned } : n));
     onUpdateStudent({ ...student, notes: updatedNotes });
   };
 
   // Delete Note
   const handleDeleteNote = (noteId: string) => {
-    const updatedNotes = student.notes.filter((n) => n.id !== noteId);
+    const currentNotes = student.notes || [];
+    const updatedNotes = currentNotes.filter((n) => n.id !== noteId);
     onUpdateStudent({ ...student, notes: updatedNotes });
   };
 
@@ -699,7 +702,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             }`}
           >
             <FileText className="w-4 h-4" />
-            <span>Student Notes ({student.notes.length})</span>
+            <span>Student Notes ({(student.notes || []).length})</span>
           </button>
 
         </div>
@@ -1315,12 +1318,12 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
 
               {/* Notes List */}
               <div className="space-y-3">
-                {student.notes.length === 0 ? (
+                {(student.notes || []).length === 0 ? (
                   <p className="text-xs text-slate-400 italic text-center py-6">
                     No notes recorded for this student yet.
                   </p>
                 ) : (
-                  student.notes.map((note) => (
+                  (student.notes || []).map((note) => (
                     <div
                       key={note.id}
                       className={`p-4 rounded-xl border transition text-xs space-y-1.5 ${
