@@ -1,4 +1,4 @@
-import { Student, ClassSessionLog, MonthlyPaymentRecord, StudentNote, PaymentStatus } from '../types';
+import { Student, ClassSessionLog, MonthlyPaymentRecord, StudentNote, PaymentStatus, ClassScheduleSlot } from '../types';
 import { INITIAL_STUDENTS } from '../data/initialData';
 import { migrateLocalStorageToSupabase, getStudentsFromSupabase } from '../services/sync';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -70,6 +70,96 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// Helper functions for deduplicating student sub-entities
+export function deduplicateNotes(notes: StudentNote[]): StudentNote[] {
+  if (!Array.isArray(notes)) return [];
+  const result: StudentNote[] = [];
+  const seenIds = new Set<string>();
+  const seenKeys = new Set<string>();
+
+  for (const note of notes) {
+    if (!note) continue;
+    if (note.id && seenIds.has(note.id)) continue;
+
+    const normTitle = (note.title || '').trim().toLowerCase();
+    const normContent = (note.content || '').trim().toLowerCase();
+    const key = `${normTitle}::${normContent}`;
+
+    if (key.length > 3 && seenKeys.has(key)) {
+      continue;
+    }
+
+    if (note.id) seenIds.add(note.id);
+    if (key.length > 3) seenKeys.add(key);
+    result.push(note);
+  }
+
+  return result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+export function deduplicateClassLogs(logs: ClassSessionLog[]): ClassSessionLog[] {
+  if (!Array.isArray(logs)) return [];
+  const result: ClassSessionLog[] = [];
+  const seenIds = new Set<string>();
+  const seenKeys = new Set<string>();
+
+  for (const log of logs) {
+    if (!log) continue;
+    if (log.id && seenIds.has(log.id)) continue;
+
+    const key = `${log.classNumber}::${log.date}`;
+    if (seenKeys.has(key)) continue;
+
+    if (log.id) seenIds.add(log.id);
+    seenKeys.add(key);
+    result.push(log);
+  }
+
+  return result.sort((a, b) => b.classNumber - a.classNumber);
+}
+
+export function deduplicatePayments(payments: MonthlyPaymentRecord[]): MonthlyPaymentRecord[] {
+  if (!Array.isArray(payments)) return [];
+  const result: MonthlyPaymentRecord[] = [];
+  const seenIds = new Set<string>();
+  const seenKeys = new Set<string>();
+
+  for (const pay of payments) {
+    if (!pay) continue;
+    if (pay.id && seenIds.has(pay.id)) continue;
+
+    const key = `${pay.monthYear}::${pay.amount}`;
+    if (seenKeys.has(key)) continue;
+
+    if (pay.id) seenIds.add(pay.id);
+    seenKeys.add(key);
+    result.push(pay);
+  }
+
+  return result;
+}
+
+export function deduplicateSchedules(schedules: ClassScheduleSlot[]): ClassScheduleSlot[] {
+  if (!Array.isArray(schedules)) return [];
+  const result: ClassScheduleSlot[] = [];
+  const seenIds = new Set<string>();
+  const seenKeys = new Set<string>();
+
+  for (const s of schedules) {
+    if (!s) continue;
+    if (s.id && seenIds.has(s.id)) continue;
+
+    const key = `${s.day}::${s.startTime}::${s.endTime}`;
+    if (seenKeys.has(key)) continue;
+
+    if (s.id) seenIds.add(s.id);
+    seenKeys.add(key);
+    result.push(s);
+  }
+
+  return result;
+}
+
 export function loadStudents(): Student[] {
   let localStudents: Student[] = INITIAL_STUDENTS;
 
@@ -92,6 +182,15 @@ export function loadStudents(): Student[] {
     localStudents = INITIAL_STUDENTS;
   }
 
+  // Deduplicar dados locais imediatamente ao carregar
+  const cleanedLocalStudents = localStudents.map((std) => ({
+    ...std,
+    notes: deduplicateNotes(std.notes || []),
+    classLogs: deduplicateClassLogs(std.classLogs || []),
+    paymentHistory: deduplicatePayments(std.paymentHistory || []),
+    schedules: deduplicateSchedules(std.schedules || []),
+  }));
+
   // 2. Se existir Supabase configurado, busca em background de forma assíncrona
   if (isSupabaseConfigured && typeof window !== 'undefined' && navigator.onLine) {
     getStudentsFromSupabase()
@@ -103,27 +202,25 @@ export function loadStudents(): Student[] {
           // Mesclar dados do Supabase com o localStorage preservando alterações locais não sincronizadas
           const mergedRemoteStudents = remoteStudents.map((remote) => {
             const local = currentLocal.find((l) => l.id === remote.id || l.name === remote.name);
-            if (!local) return remote;
+            if (!local) {
+              return {
+                ...remote,
+                notes: deduplicateNotes(remote.notes || []),
+                classLogs: deduplicateClassLogs(remote.classLogs || []),
+                paymentHistory: deduplicatePayments(remote.paymentHistory || []),
+                schedules: deduplicateSchedules(remote.schedules || []),
+              };
+            }
 
             // 1. Class Logs Merge
-            const localLogs = local.classLogs || [];
-            const remoteLogs = remote.classLogs || [];
-            const remoteLogIds = new Set(remoteLogs.map((rl) => rl.id));
-
-            const missingLocalLogs = localLogs.filter((ll) => {
-              if (remoteLogIds.has(ll.id)) return false;
-              return !remoteLogs.some(
-                (rl) => rl.classNumber === ll.classNumber && rl.date === ll.date
-              );
-            });
-
-            const mergedClassLogs = [...remoteLogs, ...missingLocalLogs].sort(
-              (a, b) => b.classNumber - a.classNumber
-            );
+            const mergedClassLogs = deduplicateClassLogs([
+              ...(local.classLogs || []),
+              ...(remote.classLogs || []),
+            ]);
 
             // 2. Class Number Counter
-            const maxLocalClassNum = localLogs.reduce((max, l) => Math.max(max, l.classNumber), 0);
-            const maxRemoteClassNum = remoteLogs.reduce((max, l) => Math.max(max, l.classNumber), 0);
+            const maxLocalClassNum = (local.classLogs || []).reduce((max, l) => Math.max(max, l.classNumber), 0);
+            const maxRemoteClassNum = (remote.classLogs || []).reduce((max, l) => Math.max(max, l.classNumber), 0);
             const mergedClassNumber = Math.max(
               remote.currentClassNumber || 0,
               local.currentClassNumber || 0,
@@ -131,52 +228,23 @@ export function loadStudents(): Student[] {
               maxRemoteClassNum
             );
 
-            // 3. Student Notes Merge
-            const localNotes = local.notes || [];
-            const remoteNotes = remote.notes || [];
-            const remoteNoteSignatures = new Set(
-              remoteNotes.map((rn) => `${rn.id}::${rn.title}`)
-            );
-
-            const missingLocalNotes = localNotes.filter(
-              (ln) =>
-                !remoteNoteSignatures.has(`${ln.id}::${ln.title}`) &&
-                !remoteNotes.some(
-                  (rn) => rn.id === ln.id || (rn.title === ln.title && rn.createdAt === ln.createdAt)
-                )
-            );
-
-            const mergedNotes = [...remoteNotes, ...missingLocalNotes].sort(
-              (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-            );
+            // 3. Student Notes Merge (coloca local.notes primeiro para priorizar a versão local/deleções)
+            const mergedNotes = deduplicateNotes([
+              ...(local.notes || []),
+              ...(remote.notes || []),
+            ]);
 
             // 4. Payment History Merge
-            const localPayments = local.paymentHistory || [];
-            const remotePayments = remote.paymentHistory || [];
-            const remotePayIds = new Set(remotePayments.map((rp) => rp.id));
-
-            const missingLocalPayments = localPayments.filter(
-              (lp) =>
-                !remotePayIds.has(lp.id) &&
-                !remotePayments.some((rp) => rp.monthYear === lp.monthYear && rp.amount === lp.amount)
-            );
-
-            const mergedPayments = [...remotePayments, ...missingLocalPayments];
+            const mergedPayments = deduplicatePayments([
+              ...(local.paymentHistory || []),
+              ...(remote.paymentHistory || []),
+            ]);
 
             // 5. Schedules Merge
-            const localSchedules = local.schedules || [];
-            const remoteSchedules = remote.schedules || [];
-            const remoteSchedIds = new Set(remoteSchedules.map((rs) => rs.id));
-
-            const missingLocalSchedules = localSchedules.filter(
-              (ls) =>
-                !remoteSchedIds.has(ls.id) &&
-                !remoteSchedules.some(
-                  (rs) => rs.day === ls.day && rs.startTime === ls.startTime
-                )
-            );
-
-            const mergedSchedules = [...remoteSchedules, ...missingLocalSchedules];
+            const mergedSchedules = deduplicateSchedules([
+              ...(local.schedules || []),
+              ...(remote.schedules || []),
+            ]);
 
             return {
               ...remote,
@@ -210,14 +278,22 @@ export function loadStudents(): Student[] {
       });
   }
 
-  // 3. Retorna os dados locais imediatamente para não bloquear a interface
-  return localStudents;
+  // 3. Retorna os dados locais deduplicados imediatamente
+  return cleanedLocalStudents;
 }
 
 export function saveStudents(students: Student[]): void {
-  // 1. Atualiza o localStorage imediatamente
+  // Limpa e deduplica todos os dados antes de salvar e sincronizar
+  const cleanedStudents = students.map((std) => ({
+    ...std,
+    notes: deduplicateNotes(std.notes || []),
+    classLogs: deduplicateClassLogs(std.classLogs || []),
+    paymentHistory: deduplicatePayments(std.paymentHistory || []),
+    schedules: deduplicateSchedules(std.schedules || []),
+  }));
+
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(students));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanedStudents));
   } catch (err) {
     console.error('Failed to save students to localStorage:', err);
   }
@@ -356,7 +432,20 @@ export function deleteNote(students: Student[], studentId: string, noteId: strin
   const updated = students.map((std) => {
     if (std.id !== studentId) return std;
 
-    const updatedNotes = (std.notes || []).filter((n) => n.id !== noteId);
+    const currentNotes = std.notes || [];
+    const targetNote = currentNotes.find((n) => n.id === noteId);
+    let updatedNotes = currentNotes.filter((n) => n.id !== noteId);
+
+    if (targetNote) {
+      const normTitle = (targetNote.title || '').trim().toLowerCase();
+      const normContent = (targetNote.content || '').trim().toLowerCase();
+      updatedNotes = updatedNotes.filter((n) => {
+        const t = (n.title || '').trim().toLowerCase();
+        const c = (n.content || '').trim().toLowerCase();
+        return !(t === normTitle && c === normContent);
+      });
+    }
+
     return { ...std, notes: updatedNotes };
   });
 

@@ -322,7 +322,19 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   // Delete Note
   const handleDeleteNote = (noteId: string) => {
     const currentNotes = student.notes || [];
-    const updatedNotes = currentNotes.filter((n) => n.id !== noteId);
+    const targetNote = currentNotes.find((n) => n.id === noteId);
+    let updatedNotes = currentNotes.filter((n) => n.id !== noteId);
+
+    if (targetNote) {
+      const normTitle = (targetNote.title || '').trim().toLowerCase();
+      const normContent = (targetNote.content || '').trim().toLowerCase();
+      updatedNotes = updatedNotes.filter((n) => {
+        const t = (n.title || '').trim().toLowerCase();
+        const c = (n.content || '').trim().toLowerCase();
+        return !(t === normTitle && c === normContent);
+      });
+    }
+
     onUpdateStudent({ ...student, notes: updatedNotes });
   };
 
