@@ -246,8 +246,14 @@ export function loadStudents(): Student[] {
               ...(remote.schedules || []),
             ]);
 
+            const studentStatus = local.status || remote.status || (remote.active ? 'active' : 'inactive');
+
             return {
               ...remote,
+              status: studentStatus,
+              standbyReason: local.standbyReason || remote.standbyReason,
+              standbyDate: local.standbyDate || remote.standbyDate,
+              active: studentStatus === 'active',
               currentClassNumber: mergedClassNumber,
               classLogs: mergedClassLogs,
               notes: mergedNotes,

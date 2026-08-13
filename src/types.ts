@@ -55,6 +55,8 @@ export interface ClassSessionLog {
 
 export type ClassLog = ClassSessionLog;
 
+export type StudentStatus = 'active' | 'standby' | 'inactive';
+
 export interface Student {
   id: string;
   name: string;
@@ -82,9 +84,13 @@ export interface Student {
   
   // General status
   active: boolean;
+  status?: StudentStatus; // 'active' | 'standby' | 'inactive'
+  standbyReason?: string; // e.g. "Vacations / Work travel / Taking a break"
+  standbyDate?: string; // ISO date string when placed on standby
   createdAt: string;
 }
 
+export type FilterStatus = 'ALL' | 'active' | 'standby' | 'inactive';
 export type FilterLevel = 'ALL' | EnglishLevel;
 export type FilterPayment = 'ALL' | 'paid' | 'pending' | 'overdue';
 export type FilterDay = 'ALL' | DayOfWeek;

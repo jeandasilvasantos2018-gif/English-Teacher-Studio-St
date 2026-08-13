@@ -4,7 +4,10 @@ import {
   getCurrentMonthPaymentStatus, 
   getCurrentMonthYearKey, 
   formatMonthYearLabel, 
-  formatCurrency 
+  formatCurrency,
+  getStudentStatus,
+  isStudentActive,
+  isStudentStandby 
 } from '../utils/helpers';
 import { 
   DollarSign, 
@@ -16,7 +19,10 @@ import {
   Send,
   CreditCard,
   Edit2,
-  MessageCircle
+  MessageCircle,
+  PauseCircle,
+  ShieldCheck,
+  Users
 } from 'lucide-react';
 
 interface PaymentTrackerViewProps {
@@ -45,6 +51,7 @@ export const PaymentTrackerView: React.FC<PaymentTrackerViewProps> = ({
   const currentMonthKey = getCurrentMonthYearKey();
   const [selectedMonthKey, setSelectedMonthKey] = useState(currentMonthKey);
   const [activeTab, setActiveTab] = useState<'current' | 'history'>('current');
+  const [studentStatusFilter, setStudentStatusFilter] = useState<'active' | 'standby' | 'all'>('active');
 
   // Modal or inline payment editor
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
@@ -53,13 +60,20 @@ export const PaymentTrackerView: React.FC<PaymentTrackerViewProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<'Bank Transfer' | 'Cash' | 'PayPal' | 'Credit Card' | 'Pix' | 'Other'>('Bank Transfer');
   const [paymentNotes, setPaymentNotes] = useState<string>('');
 
-  // Income metrics calculation
+  // Segregate students
+  const activeStudents = students.filter((s) => isStudentActive(s));
+  const standbyStudents = students.filter((s) => isStudentStandby(s));
+  const displayedStudents = students.filter((s) => {
+    if (studentStatusFilter === 'active') return isStudentActive(s);
+    if (studentStatusFilter === 'standby') return isStudentStandby(s);
+    return getStudentStatus(s) !== 'inactive';
+  });
+
+  // Income metrics calculation (only based on active regular students)
   let totalPotential = 0;
   let totalCollected = 0;
   let totalOverdue = 0;
   let totalPending = 0;
-
-  const activeStudents = students.filter((s) => s.active);
 
   activeStudents.forEach((std) => {
     totalPotential += std.monthlyFee;
@@ -172,14 +186,62 @@ export const PaymentTrackerView: React.FC<PaymentTrackerViewProps> = ({
       {/* Main Payment Matrix Table */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
         
-        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-          <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-            Student Monthly Payment Status ({activeStudents.length} Students)
-          </h3>
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+              Student Monthly Payment Status
+            </h3>
+            
+            {/* Status Filter Pills */}
+            <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs">
+              <button
+                type="button"
+                onClick={() => setStudentStatusFilter('active')}
+                className={`px-3 py-1 rounded-lg font-bold transition ${
+                  studentStatusFilter === 'active'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                }`}
+              >
+                🟢 Ativos ({activeStudents.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setStudentStatusFilter('standby')}
+                className={`px-3 py-1 rounded-lg font-bold transition flex items-center gap-1 ${
+                  studentStatusFilter === 'standby'
+                    ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                }`}
+              >
+                <PauseCircle className="w-3.5 h-3.5" />
+                Stand By ({standbyStudents.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setStudentStatusFilter('all')}
+                className={`px-3 py-1 rounded-lg font-bold transition ${
+                  studentStatusFilter === 'all'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                }`}
+              >
+                Todos ({activeStudents.length + standbyStudents.length})
+              </button>
+            </div>
+          </div>
+
           <span className="text-xs text-slate-500 italic">
-            Click any row or button to update payment records
+            Histórico de pagamentos mantido para todos os alunos
           </span>
         </div>
+
+        {studentStatusFilter === 'standby' && (
+          <div className="bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900/50 p-3 px-4 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2 font-medium">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>Alunos em pausa não geram cobranças automáticas ativas, mas <strong>todos os pagamentos já efetuados continuam salvos e acessíveis no histórico</strong>.</span>
+          </div>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -190,72 +252,105 @@ export const PaymentTrackerView: React.FC<PaymentTrackerViewProps> = ({
                 <th className="py-3 px-4">Due Day of Month</th>
                 <th className="py-3 px-4">Status ({formatMonthYearLabel(selectedMonthKey)})</th>
                 <th className="py-3 px-4">Paid Date & Method</th>
-                <th className="py-3 px-4">Payment Notes</th>
+                <th className="py-3 px-4">Payment Notes / Histórico</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
-              {activeStudents.map((student) => {
-                const paymentInfo = getCurrentMonthPaymentStatus(student);
+              {displayedStudents.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                    Nenhum aluno encontrado nesta categoria.
+                  </td>
+                </tr>
+              ) : (
+                displayedStudents.map((student) => {
+                  const isStandby = isStudentStandby(student);
+                  const paymentInfo = getCurrentMonthPaymentStatus(student);
+                  const totalPaidRecords = (student.paymentHistory || []).filter((p) => p.status === 'paid').length;
 
-                return (
-                  <tr
-                    key={student.id}
-                    className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition cursor-pointer"
-                    onClick={() => onSelectStudent(student)}
-                  >
-                    {/* Student Name */}
-                    <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">
-                      <div>{student.name}</div>
-                      <div className="text-[10px] text-slate-400 font-normal">{student.email}</div>
-                    </td>
-
-                    {/* Monthly Fee */}
-                    <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">
-                      {formatCurrency(student.monthlyFee, student.currencySymbol)}
-                    </td>
-
-                    {/* Due Day */}
-                    <td className="py-3.5 px-4 font-semibold text-slate-600 dark:text-slate-300">
-                      Day {student.dueDayOfMonth || 5} of month
-                    </td>
-
-                    {/* Status Pill */}
-                    <td className="py-3.5 px-4">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-extrabold ${
-                        paymentInfo.status === 'paid'
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                          : paymentInfo.status === 'overdue'
-                          ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
-                          : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                      }`}>
-                        {paymentInfo.status === 'paid' && <CheckCircle2 className="w-3.5 h-3.5" />}
-                        {paymentInfo.status === 'overdue' && <AlertCircle className="w-3.5 h-3.5" />}
-                        {paymentInfo.status === 'pending' && <Clock className="w-3.5 h-3.5" />}
-                        <span>{paymentInfo.status.toUpperCase()}</span>
-                      </span>
-                    </td>
-
-                    {/* Paid Date & Method */}
-                    <td className="py-3.5 px-4 text-slate-600 dark:text-slate-400">
-                      {paymentInfo.record?.paidDate ? (
-                        <div>
-                          <div className="font-semibold text-slate-800 dark:text-slate-200">
-                            {new Date(paymentInfo.record.paidDate).toLocaleDateString()}
-                          </div>
-                          <div className="text-[10px] text-indigo-600 dark:text-indigo-400">
-                            {paymentInfo.record.method || 'Direct'}
-                          </div>
+                  return (
+                    <tr
+                      key={student.id}
+                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition cursor-pointer"
+                      onClick={() => onSelectStudent(student)}
+                    >
+                      {/* Student Name */}
+                      <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">
+                        <div className="flex items-center gap-1.5">
+                          <span>{student.name}</span>
+                          {isStandby && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-500 text-white flex items-center gap-1">
+                              <PauseCircle className="w-3 h-3" />
+                              Stand By
+                            </span>
+                          )}
                         </div>
-                      ) : (
-                        <span className="text-slate-400 italic">Not recorded yet</span>
-                      )}
-                    </td>
+                        <div className="text-[10px] text-slate-400 font-normal">{student.email}</div>
+                      </td>
 
-                    {/* Notes */}
-                    <td className="py-3.5 px-4 text-slate-500 text-[11px] max-w-[200px] truncate">
-                      {paymentInfo.record?.notes || '—'}
-                    </td>
+                      {/* Monthly Fee */}
+                      <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">
+                        {formatCurrency(student.monthlyFee, student.currencySymbol)}
+                      </td>
+
+                      {/* Due Day */}
+                      <td className="py-3.5 px-4 font-semibold text-slate-600 dark:text-slate-300">
+                        Day {student.dueDayOfMonth || 5} of month
+                      </td>
+
+                      {/* Status Pill */}
+                      <td className="py-3.5 px-4">
+                        {isStandby ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-extrabold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                            <PauseCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                            <span>EM PAUSA (STAND BY)</span>
+                          </span>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-extrabold ${
+                            paymentInfo.status === 'paid'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                              : paymentInfo.status === 'overdue'
+                              ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                              : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                          }`}>
+                            {paymentInfo.status === 'paid' && <CheckCircle2 className="w-3.5 h-3.5" />}
+                            {paymentInfo.status === 'overdue' && <AlertCircle className="w-3.5 h-3.5" />}
+                            {paymentInfo.status === 'pending' && <Clock className="w-3.5 h-3.5" />}
+                            <span>{paymentInfo.status.toUpperCase()}</span>
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Paid Date & Method */}
+                      <td className="py-3.5 px-4 text-slate-600 dark:text-slate-400">
+                        {paymentInfo.record?.paidDate ? (
+                          <div>
+                            <div className="font-semibold text-slate-800 dark:text-slate-200">
+                              {new Date(paymentInfo.record.paidDate).toLocaleDateString()}
+                            </div>
+                            <div className="text-[10px] text-indigo-600 dark:text-indigo-400">
+                              {paymentInfo.record.method || 'Direct'}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 italic">
+                            {isStandby ? 'Pausado este mês' : 'Not recorded yet'}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Notes & History indicator */}
+                      <td className="py-3.5 px-4 text-slate-500 text-[11px] max-w-[200px]">
+                        {paymentInfo.record?.notes ? (
+                          <span className="truncate block">{paymentInfo.record.notes}</span>
+                        ) : (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            {totalPaidRecords} {totalPaidRecords === 1 ? 'pagamento salvo' : 'pagamentos salvos'}
+                          </span>
+                        )}
+                      </td>
 
                     {/* Action buttons */}
                     <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
@@ -301,7 +396,7 @@ export const PaymentTrackerView: React.FC<PaymentTrackerViewProps> = ({
                     </td>
                   </tr>
                 );
-              })}
+              }))}
             </tbody>
           </table>
         </div>

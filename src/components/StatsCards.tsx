@@ -1,7 +1,7 @@
 import React from 'react';
 import { Student } from '../types';
-import { getCurrentMonthPaymentStatus, formatCurrency, getNextClassInfo } from '../utils/helpers';
-import { Users, DollarSign, Award, CalendarCheck, AlertCircle } from 'lucide-react';
+import { getCurrentMonthPaymentStatus, formatCurrency, getNextClassInfo, isStudentActive, isStudentStandby } from '../utils/helpers';
+import { Users, DollarSign, Award, CalendarCheck, AlertCircle, PauseCircle } from 'lucide-react';
 
 interface StatsCardsProps {
   students: Student[];
@@ -9,7 +9,9 @@ interface StatsCardsProps {
 }
 
 export const StatsCards: React.FC<StatsCardsProps> = ({ students, onSelectPaymentFilter }) => {
-  const totalStudents = students.filter((s) => s.active).length;
+  const activeStudents = students.filter((s) => isStudentActive(s));
+  const standbyStudentsCount = students.filter((s) => isStudentStandby(s)).length;
+  const totalStudents = activeStudents.length;
 
   let totalMonthlyPotential = 0;
   let totalCollected = 0;
@@ -23,9 +25,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ students, onSelectPaymen
   const todayDayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
   let todayClassesCount = 0;
 
-  students.forEach((student) => {
-    if (!student.active) return;
-
+  activeStudents.forEach((student) => {
     totalMonthlyPotential += student.monthlyFee;
     totalClassesTaughtAllTime += student.currentClassNumber;
 
@@ -54,7 +54,13 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ students, onSelectPaymen
           <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{totalStudents}</p>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
-            Active enrollment
+            {standbyStudentsCount > 0 ? (
+              <span className="text-amber-600 dark:text-amber-400 font-medium">
+                {standbyStudentsCount} em stand by
+              </span>
+            ) : (
+              'Active enrollment'
+            )}
           </p>
         </div>
         <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">

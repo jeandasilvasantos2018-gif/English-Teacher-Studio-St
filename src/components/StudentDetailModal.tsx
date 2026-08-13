@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Student, ClassScheduleSlot, EnglishLevel, DayOfWeek, PaymentStatus, ClassSessionLog } from '../types';
+import { Student, ClassScheduleSlot, EnglishLevel, DayOfWeek, PaymentStatus, ClassSessionLog, StudentStatus } from '../types';
 import { updateClassLogForStudent, deleteClassLogForStudent, loadStudents } from '../utils/storage';
 import { StudentAvatar } from './StudentAvatar';
 import { 
@@ -8,7 +8,9 @@ import {
   getCurrentMonthPaymentStatus, 
   formatCurrency, 
   getInitials, 
-  formatMonthYearLabel 
+  formatMonthYearLabel,
+  getStudentStatus,
+  isStudentStandby 
 } from '../utils/helpers';
 import { 
   X, 
@@ -32,7 +34,11 @@ import {
   PlusCircle,
   History,
   MessageCircle,
-  Printer
+  Printer,
+  PauseCircle,
+  PlayCircle,
+  ShieldCheck,
+  Info
 } from 'lucide-react';
 
 interface StudentDetailModalProps {
@@ -71,6 +77,8 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   const [dueDayOfMonth, setDueDayOfMonth] = useState<number>(student.dueDayOfMonth || 5);
   const [currentClassNumber, setCurrentClassNumber] = useState<number>(student.currentClassNumber);
   const [active, setActive] = useState<boolean>(student.active ?? true);
+  const [status, setStatus] = useState<StudentStatus>(getStudentStatus(student));
+  const [standbyReason, setStandbyReason] = useState<string>(student.standbyReason || '');
 
   React.useEffect(() => {
     if (student) {
@@ -84,7 +92,10 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
       setCurrencySymbol(student.currencySymbol || '$');
       setDueDayOfMonth(student.dueDayOfMonth || 5);
       setCurrentClassNumber(student.currentClassNumber);
-      setActive(student.active ?? true);
+      const studentStatus = getStudentStatus(student);
+      setStatus(studentStatus);
+      setActive(studentStatus === 'active');
+      setStandbyReason(student.standbyReason || '');
       setSchedules(student.schedules || []);
       setIsEditingProfile(false);
     }
@@ -249,8 +260,37 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
     setCurrencySymbol(student.currencySymbol || '$');
     setDueDayOfMonth(student.dueDayOfMonth || 5);
     setCurrentClassNumber(student.currentClassNumber);
-    setActive(student.active ?? true);
+    const studentStatus = getStudentStatus(student);
+    setStatus(studentStatus);
+    setActive(studentStatus === 'active');
+    setStandbyReason(student.standbyReason || '');
     setIsEditingProfile(false);
+  };
+
+  // Quick 1-click Stand By toggle
+  const handleToggleStandBy = () => {
+    const isCurrentlyStandby = getStudentStatus(student) === 'standby';
+    const newStatus: StudentStatus = isCurrentlyStandby ? 'active' : 'standby';
+    setStatus(newStatus);
+    setActive(newStatus === 'active');
+
+    const updated: Student = {
+      ...student,
+      status: newStatus,
+      active: newStatus === 'active',
+      standbyReason: newStatus === 'standby' ? (standbyReason || 'Pausa temporária nas aulas') : undefined,
+      standbyDate: newStatus === 'standby' ? new Date().toISOString() : undefined,
+      // CRITICAL: Payment history is strictly preserved
+      paymentHistory: [...(student.paymentHistory || [])],
+    };
+
+    onUpdateStudent(updated);
+    setActionSuccessMessage(
+      newStatus === 'standby'
+        ? '⏸️ Aluno colocado em Stand By. Todo o histórico de pagamentos e aulas permanece 100% preservado!'
+        : '🟢 Aluno reativado com sucesso! Aulas e horários retomados.'
+    );
+    setTimeout(() => setActionSuccessMessage(null), 5000);
   };
 
   // Save profile changes
@@ -267,10 +307,17 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
       currencySymbol,
       dueDayOfMonth,
       currentClassNumber,
-      active,
+      status,
+      active: status === 'active',
+      standbyReason: status === 'standby' ? standbyReason : undefined,
+      standbyDate: status === 'standby' ? (student.standbyDate || new Date().toISOString()) : undefined,
       schedules,
+      // CRITICAL: Keep all payments completely intact
+      paymentHistory: [...(student.paymentHistory || [])],
     });
     setIsEditingProfile(false);
+    setActionSuccessMessage('Perfil do aluno atualizado com sucesso!');
+    setTimeout(() => setActionSuccessMessage(null), 4000);
   };
 
   // Add Schedule slot
@@ -387,6 +434,17 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                   <span className={`px-2.5 py-0.5 rounded-lg text-xs font-extrabold ${levelInfo.badgeBg}`}>
                     {levelInfo.code}
                   </span>
+                  {getStudentStatus(student) === 'standby' && (
+                    <span className="px-2.5 py-0.5 rounded-lg text-xs font-extrabold bg-amber-500 text-white flex items-center gap-1 shadow-xs animate-pulse">
+                      <PauseCircle className="w-3.5 h-3.5" />
+                      Stand By
+                    </span>
+                  )}
+                  {getStudentStatus(student) === 'inactive' && (
+                    <span className="px-2.5 py-0.5 rounded-lg text-xs font-bold bg-slate-700 text-slate-300">
+                      Inativo
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-indigo-200 mt-0.5 flex items-center gap-2">
                   <Target className="w-3.5 h-3.5" />
@@ -409,6 +467,33 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
 
             {/* Quick Stat Pill & Action Buttons in Modal Header */}
             <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-auto justify-end">
+              <button
+                type="button"
+                onClick={handleToggleStandBy}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md border ${
+                  getStudentStatus(student) === 'standby'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500/30'
+                    : 'bg-amber-600/90 hover:bg-amber-600 text-white border-amber-500/30'
+                }`}
+                title={
+                  getStudentStatus(student) === 'standby'
+                    ? 'Reativar aluno para aulas regulares'
+                    : 'Colocar aluno em Stand By (pausa temporária mantendo todos os pagamentos salvos)'
+                }
+              >
+                {getStudentStatus(student) === 'standby' ? (
+                  <>
+                    <PlayCircle className="w-4 h-4" />
+                    <span>Reativar Aluno</span>
+                  </>
+                ) : (
+                  <>
+                    <PauseCircle className="w-4 h-4" />
+                    <span>Stand By (Pausa)</span>
+                  </>
+                )}
+              </button>
+
               <button
                 type="button"
                 onClick={() => {
@@ -467,6 +552,55 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
 
           </div>
         </div>
+
+        {/* Action Success Toast / Message */}
+        {actionSuccessMessage && (
+          <div className="bg-emerald-600 text-white px-4 py-2.5 text-xs font-bold flex items-center justify-between shadow-xs">
+            <span className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" />
+              {actionSuccessMessage}
+            </span>
+            <button
+              onClick={() => setActionSuccessMessage(null)}
+              className="text-white/80 hover:text-white font-bold text-xs"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Informative Stand By Banner */}
+        {getStudentStatus(student) === 'standby' && (
+          <div className="bg-amber-500/10 dark:bg-amber-500/15 border-b border-amber-300/40 dark:border-amber-700/60 px-5 py-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-900 dark:text-amber-200 text-xs">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="p-2 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
+                <PauseCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="font-extrabold text-sm flex items-center gap-2">
+                  <span>Aluno em Stand By (Pausa das Aulas)</span>
+                  {student.standbyDate && (
+                    <span className="text-[11px] font-normal text-amber-700 dark:text-amber-400">
+                      • Pausado em {new Date(student.standbyDate).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-amber-800/90 dark:text-amber-300/90 mt-0.5">
+                  {student.standbyReason ? `Motivo informado: "${student.standbyReason}". ` : ''}
+                  <strong>Garantia de integridade:</strong> todos os pagamentos já realizados, histórico de aulas e anotações continuam 100% preservados e disponíveis.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleStandBy}
+              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition flex items-center gap-1.5 shadow-xs whitespace-nowrap self-end sm:self-auto shrink-0"
+            >
+              <PlayCircle className="w-4 h-4" />
+              <span>Reativar Aluno Agora</span>
+            </button>
+          </div>
+        )}
 
         {/* Render Edit Profile Form if editing mode is active */}
         {isEditingProfile ? (
@@ -615,20 +749,45 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                   />
                 </div>
 
-                {/* Active Status */}
+                {/* Student Status */}
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Student Status
                   </label>
                   <select
-                    value={active ? 'true' : 'false'}
-                    onChange={(e) => setActive(e.target.value === 'true')}
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-bold focus:ring-2 focus:ring-indigo-500"
+                    value={status}
+                    onChange={(e) => {
+                      const newStat = e.target.value as StudentStatus;
+                      setStatus(newStat);
+                      setActive(newStat === 'active');
+                    }}
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 font-bold focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white"
                   >
-                    <option value="true">Active Student</option>
-                    <option value="false">Inactive Student</option>
+                    <option value="active">🟢 Active (Aulas Regulares)</option>
+                    <option value="standby">⏸️ Stand By (Pausa / Férias)</option>
+                    <option value="inactive">⚪ Inactive (Arquivado)</option>
                   </select>
                 </div>
+
+                {/* Stand By Reason & Payment preservation assurance */}
+                {status === 'standby' && (
+                  <div className="sm:col-span-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl p-3.5 text-xs space-y-2">
+                    <label className="block font-bold text-amber-900 dark:text-amber-200">
+                      Motivo do Stand By / Pausa (Opcional)
+                    </label>
+                    <input
+                      type="text"
+                      value={standbyReason}
+                      onChange={(e) => setStandbyReason(e.target.value)}
+                      placeholder="Ex: Férias escolares, viagem de trabalho, pausa temporária de 1 mês..."
+                      className="w-full bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-xl p-2.5 text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-amber-500"
+                    />
+                    <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-semibold text-[11px] pt-1">
+                      <ShieldCheck className="w-4 h-4 shrink-0" />
+                      <span>Garantia: Ao colocar em Stand By, todo o histórico de pagamentos feitos permanece 100% salvo e seguro.</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons */}

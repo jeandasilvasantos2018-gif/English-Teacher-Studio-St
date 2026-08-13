@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Student, DayOfWeek } from '../types';
-import { DAYS_ORDER, CEFR_LEVELS } from '../utils/helpers';
+import { DAYS_ORDER, CEFR_LEVELS, isStudentActive } from '../utils/helpers';
 import { 
   Clock, 
   CheckCircle2, 
@@ -93,7 +93,7 @@ export const AvailabilityView: React.FC<AvailabilityViewProps> = ({
 
   // Compute all slots across Segunda a Sábado (8h as 21h)
   const scheduleMatrix = useMemo(() => {
-    const activeStudents = students.filter((s) => s.active);
+    const activeStudents = students.filter((s) => isStudentActive(s));
 
     // List of all occupied classes per day
     const occupiedByDay: Record<DayOfWeek, Array<{ student: Student; slot: Student['schedules'][0]; startMin: number; endMin: number }>> = {

@@ -468,25 +468,31 @@ export async function getStudentsFromSupabase(): Promise<{ data: Student[] | nul
     }
 
     // Reconstruir o formato Student[]
-    const students: Student[] = studentRows.map((row) => ({
-      id: row.local_id || row.id,
-      name: row.name,
-      email: row.email,
-      phone: row.phone || undefined,
-      avatarUrl: row.avatar_url || row.avatarUrl || undefined,
-      englishLevel: row.english_level || row.englishLevel || 'A1',
-      targetGoal: row.target_goal || row.targetGoal || undefined,
-      currentClassNumber: row.current_class_number ?? row.currentClassNumber ?? 0,
-      monthlyFee: row.monthly_fee ?? row.monthlyFee ?? 0,
-      currencySymbol: row.currency_symbol || row.currencySymbol || '$',
-      dueDayOfMonth: row.due_day_of_month ?? row.dueDayOfMonth ?? 5,
-      active: row.active ?? true,
-      createdAt: row.created_at || row.createdAt || new Date().toISOString(),
-      schedules: schedulesMap.get(row.id) || [],
-      classLogs: logsMap.get(row.id) || [],
-      paymentHistory: paymentsMap.get(row.id) || [],
-      notes: notesMap.get(row.id) || [],
-    }));
+    const students: Student[] = studentRows.map((row) => {
+      const studentStatus = row.status || (row.active === false ? 'inactive' : 'active');
+      return {
+        id: row.local_id || row.id,
+        name: row.name,
+        email: row.email,
+        phone: row.phone || undefined,
+        avatarUrl: row.avatar_url || row.avatarUrl || undefined,
+        englishLevel: row.english_level || row.englishLevel || 'A1',
+        targetGoal: row.target_goal || row.targetGoal || undefined,
+        currentClassNumber: row.current_class_number ?? row.currentClassNumber ?? 0,
+        monthlyFee: row.monthly_fee ?? row.monthlyFee ?? 0,
+        currencySymbol: row.currency_symbol || row.currencySymbol || '$',
+        dueDayOfMonth: row.due_day_of_month ?? row.dueDayOfMonth ?? 5,
+        status: studentStatus,
+        standbyReason: row.standby_reason || row.standbyReason || undefined,
+        standbyDate: row.standby_date || row.standbyDate || undefined,
+        active: studentStatus === 'active',
+        createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+        schedules: schedulesMap.get(row.id) || [],
+        classLogs: logsMap.get(row.id) || [],
+        paymentHistory: paymentsMap.get(row.id) || [],
+        notes: notesMap.get(row.id) || [],
+      };
+    });
 
     return { data: students, error: null };
   } catch (err: unknown) {

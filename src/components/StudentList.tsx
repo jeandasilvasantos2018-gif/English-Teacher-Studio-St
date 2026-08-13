@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Student, FilterLevel, FilterPayment, FilterDay, EnglishLevel, DayOfWeek } from '../types';
+import { Student, FilterLevel, FilterPayment, FilterDay, EnglishLevel, DayOfWeek, StudentStatus } from '../types';
 import { StudentCard } from './StudentCard';
 import { StudentAvatar } from './StudentAvatar';
-import { CEFR_LEVELS, getCurrentMonthPaymentStatus, formatCurrency } from '../utils/helpers';
+import { CEFR_LEVELS, getCurrentMonthPaymentStatus, formatCurrency, getStudentStatus, isStudentStandby } from '../utils/helpers';
 import { 
   Search, 
   Filter, 
@@ -16,7 +16,8 @@ import {
   AlertCircle,
   CheckCircle2,
   MessageCircle,
-  Printer
+  Printer,
+  PauseCircle
 } from 'lucide-react';
 
 interface StudentListProps {
@@ -39,6 +40,7 @@ export const StudentList: React.FC<StudentListProps> = ({
   onOpenReport,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState<'ALL' | StudentStatus>('ALL');
   const [selectedLevel, setSelectedLevel] = useState<FilterLevel>('ALL');
   const [selectedPayment, setSelectedPayment] = useState<FilterPayment>('ALL');
   const [selectedDay, setSelectedDay] = useState<FilterDay>('ALL');
@@ -47,8 +49,15 @@ export const StudentList: React.FC<StudentListProps> = ({
 
   const filteredStudents = useMemo(() => {
     return students.filter((student) => {
-      // Active check
-      if (!student.active) return false;
+      const studentStatus = getStudentStatus(student);
+
+      // Status filter
+      if (selectedStatus === 'ALL') {
+        // By default show active and standby; hide archived inactive unless specifically requested
+        if (studentStatus === 'inactive') return false;
+      } else if (selectedStatus !== studentStatus) {
+        return false;
+      }
 
       // Search match
       if (searchTerm.trim() !== '') {
@@ -87,7 +96,7 @@ export const StudentList: React.FC<StudentListProps> = ({
       if (sortBy === 'level') return b.englishLevel.localeCompare(a.englishLevel);
       return 0;
     });
-  }, [students, searchTerm, selectedLevel, selectedPayment, selectedDay, sortBy]);
+  }, [students, searchTerm, selectedStatus, selectedLevel, selectedPayment, selectedDay, sortBy]);
 
   return (
     <div className="space-y-4">
@@ -170,6 +179,18 @@ export const StudentList: React.FC<StudentListProps> = ({
             <Filter className="w-3.5 h-3.5" /> Filter by:
           </span>
 
+          {/* Status Filter */}
+          <select
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value as any)}
+            className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-lg px-2.5 py-1 font-medium focus:outline-hidden cursor-pointer"
+          >
+            <option value="ALL">Status: Todos (Ativos & Pausados)</option>
+            <option value="active">🟢 Apenas Ativos</option>
+            <option value="standby">⏸️ Stand By (Pausados)</option>
+            <option value="inactive">⚪ Inativos (Arquivados)</option>
+          </select>
+
           {/* Level Filter */}
           <select
             value={selectedLevel}
@@ -214,9 +235,10 @@ export const StudentList: React.FC<StudentListProps> = ({
           </select>
 
           {/* Clear Filters reset if active */}
-          {(selectedLevel !== 'ALL' || selectedPayment !== 'ALL' || selectedDay !== 'ALL' || searchTerm !== '') && (
+          {(selectedStatus !== 'ALL' || selectedLevel !== 'ALL' || selectedPayment !== 'ALL' || selectedDay !== 'ALL' || searchTerm !== '') && (
             <button
               onClick={() => {
+                setSelectedStatus('ALL');
                 setSelectedLevel('ALL');
                 setSelectedPayment('ALL');
                 setSelectedDay('ALL');
@@ -294,7 +316,15 @@ export const StudentList: React.FC<StudentListProps> = ({
                         <div className="flex items-center space-x-2.5">
                           <StudentAvatar name={student.name} avatarUrl={student.avatarUrl} className="w-8 h-8 rounded-lg text-xs" />
                           <div>
-                            <div>{student.name}</div>
+                            <div className="flex items-center gap-1.5">
+                              <span>{student.name}</span>
+                              {isStudentStandby(student) && (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-amber-500 text-white flex items-center gap-0.5">
+                                  <PauseCircle className="w-2.5 h-2.5" />
+                                  Stand By
+                                </span>
+                              )}
+                            </div>
                             <div className="text-[10px] text-slate-400 font-normal">
                               {student.targetGoal || 'General English'}
                             </div>

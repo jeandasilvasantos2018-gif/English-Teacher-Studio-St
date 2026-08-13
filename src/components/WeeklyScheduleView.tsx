@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Student, DayOfWeek } from '../types';
-import { DAYS_ORDER, CEFR_LEVELS } from '../utils/helpers';
+import { DAYS_ORDER, CEFR_LEVELS, isStudentActive } from '../utils/helpers';
 import { Calendar, Clock, Video, Plus, CheckCircle2, Filter, Search, X, CalendarCheck } from 'lucide-react';
 
 interface WeeklyScheduleViewProps {
@@ -23,7 +23,7 @@ export const WeeklyScheduleView: React.FC<WeeklyScheduleViewProps> = ({
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  const activeStudents = useMemo(() => students.filter((s) => s.active), [students]);
+  const activeStudents = useMemo(() => students.filter((s) => isStudentActive(s)), [students]);
 
   // Map out schedule slots grouped by day with active filters applied
   const dayScheduleMap = useMemo(() => {
@@ -38,7 +38,7 @@ export const WeeklyScheduleView: React.FC<WeeklyScheduleViewProps> = ({
     };
 
     students.forEach((student) => {
-      if (!student.active) return;
+      if (!isStudentActive(student)) return;
 
       // Filter by Student ID
       if (selectedStudentId !== 'all' && student.id !== selectedStudentId) return;

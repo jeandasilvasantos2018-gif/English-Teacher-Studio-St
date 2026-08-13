@@ -1,4 +1,17 @@
-import { EnglishLevel, LevelInfo, PaymentStatus, Student, DayOfWeek } from '../types';
+import { EnglishLevel, LevelInfo, PaymentStatus, Student, DayOfWeek, StudentStatus } from '../types';
+
+export function getStudentStatus(student: Student): StudentStatus {
+  if (student.status) return student.status;
+  return student.active ? 'active' : 'inactive';
+}
+
+export function isStudentStandby(student: Student): boolean {
+  return getStudentStatus(student) === 'standby';
+}
+
+export function isStudentActive(student: Student): boolean {
+  return getStudentStatus(student) === 'active';
+}
 
 export const CEFR_LEVELS: Record<EnglishLevel, LevelInfo> = {
   A1: {
