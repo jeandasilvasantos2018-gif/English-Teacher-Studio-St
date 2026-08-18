@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Student } from '../types';
 import { BackupStats } from '../types/backup';
 import { useAuth } from '../hooks/useAuth';
+import { isSupabaseConfigured } from '../lib/supabase';
 import { migrateLocalStorageToSupabase, getStudentsFromSupabase } from '../services/sync';
 import { saveStudents } from '../utils/storage';
 import {
@@ -35,6 +36,7 @@ import {
   CheckCircle2,
   AlertCircle,
   RefreshCw,
+  Info,
 } from 'lucide-react';
 
 interface BackupRestoreViewProps {
@@ -266,17 +268,40 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({
             </div>
           </div>
 
-          {/* User Status */}
+          {/* User / Supabase Status */}
           <div className="flex items-center gap-2.5 bg-indigo-950/80 border border-indigo-800/80 px-3.5 py-2 rounded-xl text-xs shrink-0">
-            <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-            <div className="flex flex-col">
-              <span className="text-[10px] text-indigo-300 font-medium">Usuário Autenticado</span>
-              <span className="font-semibold text-white truncate max-w-[200px]">
-                {user?.email || 'Nenhum usuário conectado'}
-              </span>
-            </div>
+            {isSupabaseConfigured ? (
+              <>
+                <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-indigo-300 font-medium">Usuário Autenticado</span>
+                  <span className="font-semibold text-white truncate max-w-[200px]">
+                    {user?.email || 'Nenhum usuário conectado'}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <>
+                <Database className="w-4 h-4 text-amber-400 shrink-0" />
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-amber-300 font-medium">Armazenamento Ativo</span>
+                  <span className="font-semibold text-white truncate max-w-[200px]">
+                    Modo Local (Navegador)
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         </div>
+
+        {!isSupabaseConfigured && (
+          <div className="p-3 bg-indigo-950/50 border border-indigo-800/60 rounded-xl text-xs text-indigo-200/90 flex items-start gap-2.5">
+            <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+            <span>
+              O Supabase não está configurado. Para sincronização na nuvem em tempo real, defina <code className="font-mono text-indigo-300">VITE_SUPABASE_URL</code> e <code className="font-mono text-indigo-300">VITE_SUPABASE_ANON_KEY</code>. No momento, todos os seus dados continuam 100% seguros no armazenamento local do navegador e você pode utilizar os backups em JSON abaixo a qualquer momento.
+            </span>
+          </div>
+        )}
 
         {/* Sync Feedback Message */}
         {cloudSyncMessage && (

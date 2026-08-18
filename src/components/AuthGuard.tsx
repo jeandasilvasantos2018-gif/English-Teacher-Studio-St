@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Login } from '../pages/Login';
+import { isSupabaseConfigured } from '../lib/supabase';
 import { Loader2 } from 'lucide-react';
 
 export interface AuthGuardProps {
@@ -9,6 +10,11 @@ export interface AuthGuardProps {
 
 export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
   const { user, loading } = useAuth();
+
+  // Se o Supabase não estiver configurado, permite usar a aplicação em modo local (LocalStorage)
+  if (!isSupabaseConfigured) {
+    return <>{children}</>;
+  }
 
   if (loading) {
     return (
