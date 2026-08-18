@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { signIn, signUp } from '../services/auth';
-import { Mail, Lock, User as UserIcon, LogIn, UserPlus, CheckCircle2, AlertCircle, Loader2, GraduationCap } from 'lucide-react';
+import { isSupabaseConfigured } from '../lib/supabase';
+import { Mail, Lock, User as UserIcon, LogIn, UserPlus, CheckCircle2, AlertCircle, Loader2, GraduationCap, Info, ArrowRight } from 'lucide-react';
 
 export interface LoginProps {
   onSuccess?: () => void;
@@ -17,6 +18,15 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(null);
+
+    if (!isSupabaseConfigured) {
+      setMessage({
+        type: 'error',
+        text: 'Supabase não está configurado. O aplicativo opera normalmente no modo de armazenamento local.',
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -126,6 +136,29 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
               <span>Criar conta</span>
             </button>
           </div>
+
+          {/* Local Mode Notice when Supabase is unconfigured */}
+          {!isSupabaseConfigured && (
+            <div className="mb-6 p-4 rounded-xl border border-amber-200 dark:border-amber-800/80 bg-amber-50/80 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 text-xs space-y-2.5">
+              <div className="flex items-start gap-2 font-bold text-amber-900 dark:text-amber-100">
+                <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <span>Modo Local Ativo (Sem Supabase)</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+                O Supabase não está configurado. O aplicativo salva todos os dados (alunos, diários, financeiro) diretamente no armazenamento local do seu navegador.
+              </p>
+              {onSuccess && (
+                <button
+                  type="button"
+                  onClick={onSuccess}
+                  className="w-full mt-1 py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition flex items-center justify-center gap-1.5"
+                >
+                  <span>Continuar no Modo Local</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Feedback Messages */}
           {message && (

@@ -14,6 +14,11 @@ let syncPending = false;
  * Executa o upload para o Supabase respeitando o estado da conexão e bloqueios de sincronização
  */
 function triggerSync(): void {
+  // Se o Supabase não estiver configurado, não realiza sincronização em background
+  if (!isSupabaseConfigured) {
+    return;
+  }
+
   // Se o navegador estiver offline, marca como pendente
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     syncPending = true;
@@ -32,11 +37,11 @@ function triggerSync(): void {
   migrateLocalStorageToSupabase()
     .then((result) => {
       if (!result.success) {
-        console.error('Aviso/Erro na sincronização em background:', result.error || result.message);
+        console.warn('Aviso na sincronização em background:', result.error || result.message);
       }
     })
     .catch((err) => {
-      console.error('Falha ao executar sincronização em background:', err);
+      console.warn('Falha ao executar sincronização em background:', err);
     })
     .finally(() => {
       isSyncing = false;
@@ -52,6 +57,10 @@ function triggerSync(): void {
  * Agenda a sincronização em background utilizando Debounce de ~2 segundos
  */
 function scheduleSync(delayMs = 2000): void {
+  if (!isSupabaseConfigured) {
+    return;
+  }
+
   if (syncDebounceTimer) {
     clearTimeout(syncDebounceTimer);
   }
@@ -61,11 +70,31 @@ function scheduleSync(delayMs = 2000): void {
   }, delayMs);
 }
 
-// Ouvinte para detectar quando a conexão for reestabelecida
+// Ouvinte para detectar quando a conexão for reestabelecida ou quando a página for recarregada/fechada
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
-    if (syncPending) {
-      scheduleSync(500);
+    if (isSupabaseConfigured && syncPending) {
+      scheduleSync(200);
+    }
+  });
+
+  window.addEventListener('beforeunload', () => {
+    if (syncDebounceTimer) {
+      clearTimeout(syncDebounceTimer);
+      syncDebounceTimer = null;
+    }
+    if (isSupabaseConfigured) {
+      triggerSync();
+    }
+  });
+
+  window.addEventListener('pagehide', () => {
+    if (syncDebounceTimer) {
+      clearTimeout(syncDebounceTimer);
+      syncDebounceTimer = null;
+    }
+    if (isSupabaseConfigured) {
+      triggerSync();
     }
   });
 }
@@ -212,39 +241,34 @@ export function loadStudents(): Student[] {
               };
             }
 
-            // 1. Class Logs Merge
-            const mergedClassLogs = deduplicateClassLogs([
-              ...(local.classLogs || []),
-              ...(remote.classLogs || []),
-            ]);
+            // 1. Class Logs Merge (prioritize local version if exists)
+            const mergedClassLogs = Array.isArray(local.classLogs)
+              ? deduplicateClassLogs(local.classLogs)
+              : deduplicateClassLogs(remote.classLogs || []);
 
             // 2. Class Number Counter
             const maxLocalClassNum = (local.classLogs || []).reduce((max, l) => Math.max(max, l.classNumber), 0);
             const maxRemoteClassNum = (remote.classLogs || []).reduce((max, l) => Math.max(max, l.classNumber), 0);
             const mergedClassNumber = Math.max(
-              remote.currentClassNumber || 0,
-              local.currentClassNumber || 0,
+              local.currentClassNumber !== undefined ? local.currentClassNumber : (remote.currentClassNumber || 0),
               maxLocalClassNum,
               maxRemoteClassNum
             );
 
-            // 3. Student Notes Merge (coloca local.notes primeiro para priorizar a versão local/deleções)
-            const mergedNotes = deduplicateNotes([
-              ...(local.notes || []),
-              ...(remote.notes || []),
-            ]);
+            // 3. Student Notes Merge (prioritize local version if exists to respect deletions/edits)
+            const mergedNotes = Array.isArray(local.notes)
+              ? deduplicateNotes(local.notes)
+              : deduplicateNotes(remote.notes || []);
 
-            // 4. Payment History Merge
-            const mergedPayments = deduplicatePayments([
-              ...(local.paymentHistory || []),
-              ...(remote.paymentHistory || []),
-            ]);
+            // 4. Payment History Merge (prioritize local version if exists)
+            const mergedPayments = Array.isArray(local.paymentHistory)
+              ? deduplicatePayments(local.paymentHistory)
+              : deduplicatePayments(remote.paymentHistory || []);
 
-            // 5. Schedules Merge
-            const mergedSchedules = deduplicateSchedules([
-              ...(local.schedules || []),
-              ...(remote.schedules || []),
-            ]);
+            // 5. Schedules Merge (CRITICAL: prioritize local schedules to respect deletions of schedule slots)
+            const mergedSchedules = Array.isArray(local.schedules)
+              ? deduplicateSchedules(local.schedules)
+              : deduplicateSchedules(remote.schedules || []);
 
             const studentStatus = local.status || remote.status || (remote.active ? 'active' : 'inactive');
 
@@ -304,8 +328,8 @@ export function saveStudents(students: Student[]): void {
     console.error('Failed to save students to localStorage:', err);
   }
 
-  // 2. Agenda a sincronização com o Supabase em background (Debounce + Queue)
-  scheduleSync(2000);
+  // 2. Agenda a sincronização com o Supabase em background (Debounce de 300ms)
+  scheduleSync(300);
 }
 
 export function resetToDemoData(): Student[] {
@@ -506,4 +530,46 @@ export function deleteClassLogForStudent(
   saveStudents(updated);
   return updated;
 }
+
+export function deleteScheduleSlotForStudent(
+  students: Student[],
+  studentId: string,
+  slotId: string
+): Student[] {
+  const updated = students.map((std) => {
+    if (std.id !== studentId) return std;
+
+    const updatedSchedules = (std.schedules || []).filter((s) => s.id !== slotId);
+
+    return {
+      ...std,
+      schedules: updatedSchedules,
+    };
+  });
+
+  saveStudents(updated);
+  return updated;
+}
+
+export function addScheduleSlotForStudent(
+  students: Student[],
+  studentId: string,
+  slot: ClassScheduleSlot
+): Student[] {
+  const updated = students.map((std) => {
+    if (std.id !== studentId) return std;
+
+    const currentSchedules = std.schedules || [];
+    const updatedSchedules = [...currentSchedules, slot];
+
+    return {
+      ...std,
+      schedules: updatedSchedules,
+    };
+  });
+
+  saveStudents(updated);
+  return updated;
+}
+
 

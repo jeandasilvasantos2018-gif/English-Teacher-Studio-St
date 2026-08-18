@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export interface UseAuthReturn {
   user: User | null;
@@ -11,9 +11,14 @@ export interface UseAuthReturn {
 export function useAuth(): UseAuthReturn {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(isSupabaseConfigured);
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setLoading(false);
+      return;
+    }
+
     let mounted = true;
 
     // Obter a sessão inicial
@@ -24,7 +29,7 @@ export function useAuth(): UseAuthReturn {
         setLoading(false);
       }
     }).catch((err) => {
-      console.error('Erro ao buscar sessão inicial do Supabase:', err);
+      console.warn('Supabase getSession:', err);
       if (mounted) {
         setLoading(false);
       }
