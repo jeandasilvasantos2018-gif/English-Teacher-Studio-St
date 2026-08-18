@@ -323,7 +323,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   // Add Schedule slot
   const handleAddScheduleSlot = () => {
     const slot: ClassScheduleSlot = {
-      id: `sch-${Date.now()}`,
+      id: `sch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       day: newDay,
       startTime: newStartTime,
       endTime: newEndTime,
@@ -332,6 +332,8 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
     const updated = [...schedules, slot];
     setSchedules(updated);
     onUpdateStudent({ ...student, schedules: updated });
+    setActionSuccessMessage('Novo horário de aula adicionado com sucesso!');
+    setTimeout(() => setActionSuccessMessage(null), 3000);
   };
 
   // Remove Schedule slot
@@ -339,6 +341,8 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
     const updated = schedules.filter((s) => s.id !== slotId);
     setSchedules(updated);
     onUpdateStudent({ ...student, schedules: updated });
+    setActionSuccessMessage('Horário de aula removido com sucesso!');
+    setTimeout(() => setActionSuccessMessage(null), 3000);
   };
 
   // Add Note
