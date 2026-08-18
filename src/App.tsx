@@ -255,37 +255,23 @@ export default function App() {
 
         {/* Dynamic Views */}
         {viewMode === 'grid' || viewMode === 'table' ? (
-          <div className="space-y-6">
-            {/* Botão Enorme de Teste JEAN */}
-            <div className="w-full flex justify-center">
-              <button
-                id="jean-test-update-button"
-                type="button"
-                onClick={() => showToast('🚀 Atualização funcionando perfeitamente! Olá, Jean!')}
-                className="w-full max-w-xl py-6 px-10 text-3xl sm:text-4xl font-extrabold tracking-wider text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 rounded-2xl shadow-2xl hover:shadow-indigo-500/50 hover:scale-105 active:scale-95 transition-all duration-200 uppercase border-4 border-white/20 text-center flex items-center justify-center gap-3 cursor-pointer"
-              >
-                <span>🌟 JEAN 🌟</span>
-              </button>
-            </div>
-
-            <StudentList
-              students={students}
-              onSelectStudent={(std) => setSelectedStudent(std)}
-              onQuickLogClass={(std) => setQuickLogStudent(std)}
-              onQuickRecordPayment={(std) => {
-                setSelectedStudent(std);
-              }}
-              onOpenAddStudent={() => {
-                setInitialAddStudentSlot(null);
-                setIsAddStudentOpen(true);
-              }}
-              onOpenWhatsApp={(std, tmpl) => {
-                setWhatsAppStudent(std);
-                if (tmpl) setWhatsAppTemplate(tmpl);
-              }}
-              onOpenReport={(std) => setReportStudent(std)}
-            />
-          </div>
+          <StudentList
+            students={students}
+            onSelectStudent={(std) => setSelectedStudent(std)}
+            onQuickLogClass={(std) => setQuickLogStudent(std)}
+            onQuickRecordPayment={(std) => {
+              setSelectedStudent(std);
+            }}
+            onOpenAddStudent={() => {
+              setInitialAddStudentSlot(null);
+              setIsAddStudentOpen(true);
+            }}
+            onOpenWhatsApp={(std, tmpl) => {
+              setWhatsAppStudent(std);
+              if (tmpl) setWhatsAppTemplate(tmpl);
+            }}
+            onOpenReport={(std) => setReportStudent(std)}
+          />
         ) : viewMode === 'weekly' ? (
           <WeeklyScheduleView
             students={students}

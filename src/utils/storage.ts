@@ -161,16 +161,25 @@ export function deduplicateSchedules(schedules: ClassScheduleSlot[]): ClassSched
   const seenIds = new Set<string>();
   const seenKeys = new Set<string>();
 
-  for (const s of schedules) {
-    if (!s) continue;
-    if (s.id && seenIds.has(s.id)) continue;
+  for (let i = 0; i < schedules.length; i++) {
+    const s = schedules[i];
+    if (!s || !s.day || !s.startTime || !s.endTime) continue;
 
     const key = `${s.day}::${s.startTime}::${s.endTime}`;
     if (seenKeys.has(key)) continue;
 
-    if (s.id) seenIds.add(s.id);
+    const validId = s.id && String(s.id).trim().length > 0
+      ? String(s.id)
+      : `sch-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`;
+
+    if (seenIds.has(validId)) continue;
+
+    seenIds.add(validId);
     seenKeys.add(key);
-    result.push(s);
+    result.push({
+      ...s,
+      id: validId,
+    });
   }
 
   return result;

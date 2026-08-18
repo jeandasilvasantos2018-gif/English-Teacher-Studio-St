@@ -336,9 +336,16 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
     setTimeout(() => setActionSuccessMessage(null), 3000);
   };
 
-  // Remove Schedule slot
-  const handleRemoveScheduleSlot = (slotId: string) => {
-    const updated = schedules.filter((s) => s.id !== slotId);
+  // Remove Schedule slot (robust with ID and index fallback)
+  const handleRemoveScheduleSlot = (slotId?: string, index?: number) => {
+    let updated: ClassScheduleSlot[];
+    if (slotId && slotId.trim().length > 0) {
+      updated = schedules.filter((s, idx) => s.id !== slotId && (index === undefined || idx !== index));
+    } else if (typeof index === 'number') {
+      updated = schedules.filter((_, idx) => idx !== index);
+    } else {
+      return;
+    }
     setSchedules(updated);
     onUpdateStudent({ ...student, schedules: updated });
     setActionSuccessMessage('Horário de aula removido com sucesso!');
@@ -900,38 +907,48 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
               </div>
 
               {/* List of current scheduled times */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {schedules.map((slot) => (
-                  <div
-                    key={slot.id}
-                    className="bg-slate-50 dark:bg-slate-800/80 p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700 flex items-center justify-between"
-                  >
-                    <div>
-                      <div className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-indigo-500" />
-                        {slot.day}s
-                      </div>
-                      <div className="text-sm font-black text-indigo-600 dark:text-indigo-400 mt-0.5">
-                        {slot.startTime} – {slot.endTime}
-                      </div>
-                      {slot.locationUrl && (
-                        <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-1">
-                          <Video className="w-3 h-3 text-blue-500" />
-                          {slot.locationUrl}
-                        </div>
-                      )}
-                    </div>
-
-                    <button
-                      onClick={() => handleRemoveScheduleSlot(slot.id)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                      title="Remove Schedule Slot"
+              {schedules.length === 0 ? (
+                <div className="p-6 text-center bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-xs text-slate-500 dark:text-slate-400">
+                  <Calendar className="w-8 h-8 mx-auto mb-2 text-slate-400 opacity-60" />
+                  <p className="font-semibold">Nenhum horário cadastrado para este aluno.</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Use o formulário abaixo para adicionar dias e horários de aula.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {schedules.map((slot, idx) => (
+                    <div
+                      key={slot.id || `slot-${idx}`}
+                      className="bg-slate-50 dark:bg-slate-800/80 p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700 flex items-center justify-between shadow-xs hover:border-indigo-200 dark:hover:border-indigo-800 transition"
                     >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
+                      <div>
+                        <div className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+                          {slot.day}s
+                        </div>
+                        <div className="text-sm font-black text-indigo-600 dark:text-indigo-400 mt-0.5">
+                          {slot.startTime} – {slot.endTime}
+                        </div>
+                        {slot.locationUrl && (
+                          <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-1">
+                            <Video className="w-3 h-3 text-blue-500" />
+                            {slot.locationUrl}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveScheduleSlot(slot.id, idx)}
+                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition flex items-center gap-1 font-bold text-xs"
+                        title="Remover este horário"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span className="hidden sm:inline text-[11px]">Excluir</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Add New Schedule Form */}
               <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200/80 dark:border-slate-700/80 space-y-3">
